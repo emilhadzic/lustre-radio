@@ -12,4 +12,7 @@
     <ProjectReference Include="..\..\src\LustreRadio.Audio\LustreRadio.Audio.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Core\LustreRadio.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\testdata\audio\**" Link="audio\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>

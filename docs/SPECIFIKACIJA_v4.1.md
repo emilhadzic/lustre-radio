@@ -792,7 +792,17 @@ Stavke 1, 4, 8, 9 i 12 utiču na prve faze. Ostale mogu da stignu do faze M4.
 - Media Foundation biblioteke postoje na tom računaru [Č]; da li dekodiranje MP3/AAC/FLAC tamo stvarno radi, još nije isprobano [?].
 - Audio uređaja nema (0) [Č]: stvarna reprodukcija se tamo ne može testirati. Testovi tipa U i C ostaju za pravi računar.
 
-**Još otvoreno:** izdanje Windowsa na mini PC-ju (da li „N“); AUX ulaz na zvučniku; memorija u mirovanju i „Slots used“; slobodan disk; drugi programi na mini PC-ju; BIOS opcija za struju; model monitora; izlaz za preslušavanje; poseban Windows nalog.
+**Dopuna 13.11.2026. uveče:**
+- Windows na mini PC-ju: **Windows 11 Home, nije „N“** → U8 ispunjena.
+- **Na mini PC-ju radi i POS program (kasa).** Posledice:
+  - POS ima prednost: radio ne sme da ga uspori. Audio proces troši malo, a analiza radi samo noću, najnižim prioritetom [P, mora se izmeriti uz POS].
+  - Memorija od 4 GB se deli sa POS-om → rizik R2 raste; preporuka za 8 GB je jača.
+  - Monitor na dodir verovatno ceo dan prikazuje POS, pa interfejs radija ne može biti stalno na ekranu [?]. Otvara se po potrebi, a muzika ne zavisi od njega (to arhitektura već obezbeđuje).
+  - Poseban Windows nalog (U14) verovatno nije moguć, jer POS određuje nalog [?].
+  - Isključivanje Windows zvukova (D11) ne sme da ugasi zvuke koje POS možda koristi [?].
+- **Testiranje:** mini PC nije dostupan za duže testove tokom dana. Testovi se rade na računaru za razvoj, uz režim „slab računar“ (ograničen broj jezgara, brzina i memorija). Taj režim je procena, ne zamena: završni testovi na mini PC-ju rade se noću (23:30–07:00), kad lokal ne radi, i ne traže ničije prisustvo.
+
+**Još otvoreno:** koji POS program, da li je preko celog ekrana i da li koristi zvuk; AUX ulaz na zvučniku; memorija u mirovanju i „Slots used“; slobodan disk; drugi programi na mini PC-ju; BIOS opcija za struju; model monitora; izlaz za preslušavanje; poseban Windows nalog.
 
 ---
 
