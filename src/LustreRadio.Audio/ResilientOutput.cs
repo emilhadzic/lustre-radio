@@ -154,6 +154,7 @@ public sealed class ResilientOutput : IDisposable
         }
 
         IOutputSession? session = null;
+        var countedReconnect = false;
         try
         {
             session = _backend.Open(_puller, _format, _latencyMs, frames => Interlocked.Add(ref _underrunFrames, frames));
@@ -161,19 +162,27 @@ public sealed class ResilientOutput : IDisposable
             opened.Stopped += error => OnSessionStopped(opened, error);
             _sessionDead = false;
             _session = opened;
-            opened.Play();
 
+            // Stanje i brojac se postavljaju PRE pustanja: kratak zvuk moze da se zavrsi
+            // pre nego sto se Play() vrati, a "Finished" mora ostati poslednje stanje.
             if (_everOpened)
             {
                 Interlocked.Increment(ref _reconnects);
+                countedReconnect = true;
             }
 
-            _everOpened = true;
             DeviceName = opened.DeviceName;
             SetState(OutputState.Playing, opened.DeviceName);
+            opened.Play();
+            _everOpened = true;
         }
         catch (Exception ex)
         {
+            if (countedReconnect)
+            {
+                Interlocked.Decrement(ref _reconnects);
+            }
+
             _session = null;
             session?.Dispose();
             SetState(OutputState.Disconnected, ex.GetType().Name + ": " + ex.Message);
@@ -216,6 +225,11 @@ public sealed class ResilientOutput : IDisposable
 
     private void SetState(OutputState state, string detail)
     {
+        if (_state == OutputState.Finished)
+        {
+            return; // kraj je konacno stanje
+        }
+
         if (_state == state && state == OutputState.Disconnected)
         {
             return; // ne ponavljaj isti zapis na svaki pokusaj
