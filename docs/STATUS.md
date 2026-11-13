@@ -3,8 +3,9 @@
 | Faza | Stanje | Dokaz |
 |---|---|---|
 | M0 Temelj | završeno 13.11.2026. | GitHub Actions (Windows Server 2025, .NET 10): build, 31 test (5 Core, 26 arhitektonskih), smoke pokretanje svih 5 programa. Nije pokrenuto na mini PC-ju. |
-| M1 Audio jezgro | u toku | vidi ispod |
-| M2–M12 | nije započeto | – |
+| M1 Audio jezgro | **zatvorena 13.11.2026. po odluci vlasnika, sa otvorenim stavkama** | Automatski testovi prošli; stvarni zvuk prošao na računaru vlasnika. Otvoreno (prenosi se dalje): ponovno povezivanje na pravom uređaju i Bluetooth (T-BT) nepokrenuti; fiksna sistemska glasnoća; OGG Opus; rezervni FLAC dekoder; ništa nije pokrenuto na mini PC-ju; duža proba nije rađena; režim „slab računar“ preskočen. |
+| M2 Logika | u toku | vidi „M2 po koracima“ |
+| M3–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
 
@@ -81,3 +82,17 @@ Windows 11 (10.0.26300), AMD Ryzen 9 5900X (24 logička jezgra), 64 GB. Ovo NIJE
 - Pesme su krenule na 0, 20, 40, 60 i 80 s, tačno po planu; ukupno 105,1 s (plan 105 s); završeno samo.
 - 0 prekida zvuka; memorija 68 MB radni skup, 34 MB privatno; ocena slušanjem „d“.
 - Nije probano slušanjem: FLAC, M4A, AAC, OGG, WAV; rad duži od 2 minuta; glasnoća po pesmi (sve su puštene sa istim podrazumevanim utišanjem).
+
+## M2 po koracima
+
+| Korak | Stanje | Dokaz |
+|---|---|---|
+| 1. Satovi, raspored (21 slot, izuzeci, ručni izbor), kapija licenci, rotacija, Zdravlje biblioteke | završeno 13.11.2026. | GitHub Actions: 62 testa logike prošla (T-SCH-01..10, T-LIC-01..04 na nivou kapije, T-ROT-01..04). Provera testova: namerno pokvaren raspored, kapija i rotacija → 9 testova palo. |
+| 2. Raspored glasovnih poruka (T-VOI-03), pravila rezervnih režima | nije započeto | – |
+
+Napomene uz korak 1:
+- Raspored podržava radno vreme unutar jednog dana (zatvaranje pre ponoći).
+- Ručni izbor programa ne otvara radio van radnog vremena; za to služi izuzetak (događaj).
+- Kad pesama nema dovoljno, bira se nasumično među četvrtinom najduže nepuštanih (ne strogo najstarija), da se redosledi ne ponavljaju.
+- „Zdravlje biblioteke“ računa svaki slot za sebe; ako iste pesme odgovaraju većem broju slotova, stvarni razmak je manji od procene.
+- T-LIC-01 („kroz sve puteve“) je ovde dokazan za kapiju i rotaciju; za ručni izbor, rezervnu listu i glas dokazuje se kad ti delovi nastanu (M3, M10, M11).
