@@ -216,19 +216,27 @@ public class StandardCrossfadeTests
     [Fact]
     public void SteadyPlayback_DoesNotAllocateMemory()
     {
-        var sequencer = new CrossfadeSequencer(Format, Signal.Queue(Signal.Tone("a", 400, 30)), crossfadeSeconds: 1);
+        var sequencer = new CrossfadeSequencer(Format, Signal.Queue(Signal.Tone("a", 400, 600)), crossfadeSeconds: 1);
         var limiter = new Limiter(Format);
         var buffer = new float[2048];
-        sequencer.Read(buffer); // ucitavanje pesme sme da zauzme memoriju
-        limiter.Process(buffer);
-
-        var before = GC.GetAllocatedBytesForCurrentThread();
         for (var i = 0; i < 500; i++)
+        {
+            // zagrevanje: ucitavanje pesme i prevodjenje koda smeju da zauzmu memoriju
+            sequencer.Read(buffer);
+            limiter.Process(buffer);
+        }
+
+        const int Blocks = 5000;
+        var before = GC.GetAllocatedBytesForCurrentThread();
+        for (var i = 0; i < Blocks; i++)
         {
             sequencer.Read(buffer);
             limiter.Process(buffer);
         }
 
-        Assert.Equal(0, GC.GetAllocatedBytesForCurrentThread() - before);
+        // Jedno zauzimanje po bloku bilo bi najmanje 24 B x 5000 = 120 KB.
+        // Dozvoljeno je 16 KB za jednokratne troškove okruženja (.NET povremeno zauzme par KB pri optimizaciji koda).
+        var allocated = GC.GetAllocatedBytesForCurrentThread() - before;
+        Assert.True(allocated < 16 * 1024, $"Zauzeto {allocated} B tokom {Blocks} blokova.");
     }
 }
