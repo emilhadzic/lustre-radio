@@ -40,7 +40,9 @@ public sealed class ScannerTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(64, scanned.ContentHash.Length);
         Assert.Equal(new FileInfo(Fixture(file)).Length, scanned.SizeBytes);
         Assert.InRange(scanned.DurationSeconds, 3.95, 4.15);
-        Assert.InRange(scanned.PeakDbfs!.Value, -7.0, -4.5); // signal ima amplitudu 0,5 = -6 dBFS
+        // Signal ima amplitudu 0,5 = -6 dBFS. Kompresovani formati vracaju nesto vise vrhove
+        // (izmereno: AAC do -2,8 dBFS); zato se vrh meri na dekodiranom zvuku, a ne pretpostavlja.
+        Assert.InRange(scanned.PeakDbfs!.Value, -7.0, -2.0);
         if (exactFrames > 0)
         {
             Assert.Equal(exactFrames, scanned.ExactFrames);
