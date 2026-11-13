@@ -4,7 +4,7 @@
 |---|---|---|
 | M0 Temelj | završeno 13.11.2026. | GitHub Actions (Windows Server 2025, .NET 10): build, 31 test (5 Core, 26 arhitektonskih), smoke pokretanje svih 5 programa. Nije pokrenuto na mini PC-ju. |
 | M1 Audio jezgro | **zatvorena 13.11.2026. po odluci vlasnika, sa otvorenim stavkama** | Automatski testovi prošli; stvarni zvuk prošao na računaru vlasnika. Otvoreno (prenosi se dalje): ponovno povezivanje na pravom uređaju i Bluetooth (T-BT) nepokrenuti; fiksna sistemska glasnoća; OGG Opus; rezervni FLAC dekoder; ništa nije pokrenuto na mini PC-ju; duža proba nije rađena; režim „slab računar“ preskočen. |
-| M2 Logika | u toku | vidi „M2 po koracima“ |
+| M2 Logika | **završena 13.11.2026.** | GitHub Actions: 93 testa logike prošla. Kriterijum iz specifikacije (T-SCH, T-ROT, T-LIC, T-VOI-03) ispunjen na nivou čiste logike; povezivanje sa bazom i engine-om dolazi u M3. |
 | M3–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
@@ -88,7 +88,7 @@ Windows 11 (10.0.26300), AMD Ryzen 9 5900X (24 logička jezgra), 64 GB. Ovo NIJE
 | Korak | Stanje | Dokaz |
 |---|---|---|
 | 1. Satovi, raspored (21 slot, izuzeci, ručni izbor), kapija licenci, rotacija, Zdravlje biblioteke | završeno 13.11.2026. | GitHub Actions: 62 testa logike prošla (T-SCH-01..10, T-LIC-01..04 na nivou kapije, T-ROT-01..04). Provera testova: namerno pokvaren raspored, kapija i rotacija → 9 testova palo. |
-| 2. Raspored glasovnih poruka (T-VOI-03), pravila rezervnih režima | nije započeto | – |
+| 2. Raspored glasovnih poruka (T-VOI-03), izbor prelaza po D6 (T-TRN-05, 06 na nivou odluke), pravila rezervnih režima | završeno 13.11.2026. | GitHub Actions: 31 novi test. Dva testa su pala u prvom pokušaju: jedan je otkrio pravu grešku (ista kratka poruka mogla se ponoviti preko granice dana, ispravljeno), drugi je imao pogrešno očekivanje (ispravljen test). |
 
 Napomene uz korak 1:
 - Raspored podržava radno vreme unutar jednog dana (zatvaranje pre ponoći).
@@ -96,3 +96,6 @@ Napomene uz korak 1:
 - Kad pesama nema dovoljno, bira se nasumično među četvrtinom najduže nepuštanih (ne strogo najstarija), da se redosledi ne ponavljaju.
 - „Zdravlje biblioteke“ računa svaki slot za sebe; ako iste pesme odgovaraju većem broju slotova, stvarni razmak je manji od procene.
 - T-LIC-01 („kroz sve puteve“) je ovde dokazan za kapiju i rotaciju; za ručni izbor, rezervnu listu i glas dokazuje se kad ti delovi nastanu (M3, M10, M11).
+- Željeni razmak ponavljanja glasovnih poruka (6 h kratke, 24 h duže) poštuje se kad poruka ima dovoljno; inače se bira najduže nepuštana, ali nikad ista dvaput zaredom. Za pun razmak treba oko 8 kratkih i 7 dužih poruka.
+- Sezonska, praznična ili događajna poruka ima prednost jednom u svom razmaku od 24 h (klizno), ne nužno kao prva duža poruka svakog dana.
+- Posle duže poruke kratka identifikacija ne ide bar 45 minuta.
