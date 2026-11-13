@@ -18,7 +18,8 @@ public sealed class VoiceScheduler(Random random)
     private DateTime _longDue;
     private int _defers;
     private bool _voiceOnPreviousBoundary;
-    private string? _lastMessageId;
+    private string? _lastIdentId;
+    private string? _lastLongId;
     private VoiceKind? _lastVoice;
 
     public VoiceDecision OnBoundary(VoiceBoundary boundary, IReadOnlyList<VoiceMessage> messages, VoiceRules rules)
@@ -100,7 +101,7 @@ public sealed class VoiceScheduler(Random random)
             // sezonske, praznicne i dogadjajne imaju prednost dok vaze (jednom u svom razmaku)
             var special = usable.Where(m => SpecialCategories.Contains(m.Category) && RepeatGapOk(m, now, rules.LongRepeatGap)).ToList();
             var pool = special.Count > 0 ? special : usable.Where(m => LongCategories.Contains(m.Category)).ToList();
-            var chosen = Choose(pool, now, rules.LongRepeatGap, partRules);
+            var chosen = Choose(pool, now, rules.LongRepeatGap, partRules, _lastLongId);
             if (chosen is not null)
             {
                 return new VoiceDecision { Message = chosen, Reason = "Dospela duza poruka." };
@@ -112,7 +113,7 @@ public sealed class VoiceScheduler(Random random)
 
         if (identIsDue)
         {
-            var chosen = Choose(usable.Where(m => m.Category == VoiceCategory.Ident).ToList(), now, rules.IdentRepeatGap, partRules);
+            var chosen = Choose(usable.Where(m => m.Category == VoiceCategory.Ident).ToList(), now, rules.IdentRepeatGap, partRules, _lastIdentId);
             if (chosen is not null)
             {
                 return new VoiceDecision { Message = chosen, Reason = "Dospela identifikacija stanice." };
@@ -133,17 +134,18 @@ public sealed class VoiceScheduler(Random random)
 
         _lastPlayed[message.Id] = nowLocal;
         _recentPlays.Add(nowLocal);
-        _lastMessageId = message.Id;
         _lastVoice = message.Voice;
         _defers = 0;
         _voiceOnPreviousBoundary = true;
 
         if (message.Category == VoiceCategory.Ident)
         {
+            _lastIdentId = message.Id;
             _identDue = nowLocal + Between(partRules.IdentMin, partRules.IdentMax);
         }
         else
         {
+            _lastLongId = message.Id;
             _longDue = nowLocal + Between(partRules.LongMin, partRules.LongMax);
 
             // duza poruka vec sadrzi ime stanice: kratka ne ide odmah za njom
@@ -167,20 +169,21 @@ public sealed class VoiceScheduler(Random random)
     private bool RepeatGapOk(VoiceMessage message, DateTime now, TimeSpan gap) =>
         !_lastPlayed.TryGetValue(message.Id, out var last) || now - last >= gap;
 
-    private VoiceMessage? Choose(List<VoiceMessage> pool, DateTime now, TimeSpan repeatGap, VoicePartRules partRules)
+    private VoiceMessage? Choose(List<VoiceMessage> pool, DateTime now, TimeSpan repeatGap, VoicePartRules partRules, string? lastOfThisKind)
     {
         if (pool.Count == 0)
         {
             return null;
         }
 
-        // Zeljeni razmak; ako ga nijedna ne ispunjava, uzmi najduze nepustane (kao kod pesama),
-        // ali nikad istu poruku dvaput zaredom ako postoji druga.
-        var candidates = pool.Where(m => RepeatGapOk(m, now, repeatGap)).ToList();
+        // Nikad ista poruka dvaput zaredom (u svojoj vrsti), ako postoji druga.
+        var others = pool.Where(m => m.Id != lastOfThisKind).ToList();
+        var from = others.Count > 0 ? others : pool;
+
+        // Zeljeni razmak; ako ga nijedna ne ispunjava, uzmi najduze nepustane (kao kod pesama).
+        var candidates = from.Where(m => RepeatGapOk(m, now, repeatGap)).ToList();
         if (candidates.Count == 0)
         {
-            var others = pool.Where(m => m.Id != _lastMessageId).ToList();
-            var from = others.Count > 0 ? others : pool;
             var oldest = from.Min(m => _lastPlayed.GetValueOrDefault(m.Id));
             candidates = from.Where(m => _lastPlayed.GetValueOrDefault(m.Id) == oldest).ToList();
         }

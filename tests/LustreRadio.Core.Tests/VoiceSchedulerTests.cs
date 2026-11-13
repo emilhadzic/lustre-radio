@@ -256,11 +256,14 @@ public class VoiceSchedulerTests
         Assert.Equal(3, seasonal.Count);
         Assert.Equal([18, 19, 20], seasonal.Select(p => p.At.Day));
 
-        // prva duza poruka svakog od ta tri dana je sezonska
-        foreach (var day in new[] { 18, 19, 20 })
+        // prvog dana vazenja sezonska ide kao prva duza poruka
+        var firstLong = plays.First(p => p.At.Day == 18 && p.Message.Category != VoiceCategory.Ident);
+        Assert.Equal("sezonska", firstLong.Message.Id);
+
+        // narednih dana ide cim prodje njen razmak od 24 h (zato ne mora biti bas prva)
+        for (var i = 1; i < seasonal.Count; i++)
         {
-            var firstLong = plays.First(p => p.At.Day == day && p.Message.Category != VoiceCategory.Ident);
-            Assert.Equal("sezonska", firstLong.Message.Id);
+            Assert.True(seasonal[i].At - seasonal[i - 1].At >= Rules.LongRepeatGap);
         }
     }
 
