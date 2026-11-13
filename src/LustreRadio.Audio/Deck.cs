@@ -126,7 +126,10 @@ public sealed class Deck
             if (read <= 0)
             {
                 Finished = true;
-                if (_source.LengthFrames is long length && Position + got < length)
+                // Dekoderi cesto najave malo vecu duzinu nego sto fajl stvarno ima (izmereno: do ~15 ms).
+                // "Ranije zavrsio" se belezi tek kad fali vise od desetinke sekunde.
+                var tolerance = _source.Format.SampleRate / 10;
+                if (_source.LengthFrames is long length && Position + got < length - tolerance)
                 {
                     EndedEarly = true;
                 }

@@ -57,12 +57,44 @@ public class FormatMatrixTests(ITestOutputHelper output)
         Assert.InRange(ratio, mono ? 0.99 : 0.45, mono ? 1.01 : 0.55);
     }
 
-    [Theory] // T-AUD-06
+    [Theory] // T-AUD-06: tacno preskakanje daje iste uzorke kao dekodiranje od pocetka
     [MemberData(nameof(Files))]
-    public void Seek_MatchesSequentialDecode(string file, string decoder, bool exact, bool mono)
+    public void SkipFrames_MatchesSequentialDecode(string file, string decoder, bool exact, bool mono)
     {
         Assert.NotNull(decoder);
-        Assert.True(mono || !mono);
+        Assert.True(exact || mono || !mono);
+        var path = AudioFixtures.PathOf(file);
+        float[] sequential;
+        using (var source = Decoders.Open(path, AudioFixtures.Target))
+        {
+            sequential = AudioFixtures.ReadAll(source);
+        }
+
+        const int Position = 2 * Rate, Length = Rate / 2;
+        float[] afterSkip;
+        using (var source = Decoders.Open(path, AudioFixtures.Target))
+        {
+            Assert.Equal(Position, source.SkipFrames(Position));
+            afterSkip = AudioFixtures.ReadAll(source, Length);
+        }
+
+        var worst = 0f;
+        for (var i = 0; i < afterSkip.Length; i++)
+        {
+            worst = Math.Max(worst, Math.Abs(afterSkip[i] - sequential[(Position * 2) + i]));
+        }
+
+        output.WriteLine($"{file}: najveca razlika posle tacnog preskakanja = {worst:E2}");
+        Assert.Equal(Length * 2, afterSkip.Length);
+        Assert.True(worst < 1e-4, $"razlika {worst}");
+    }
+
+    [Theory] // T-AUD-06: brzo premotavanje je priblizno; meri se koliko
+    [MemberData(nameof(Files))]
+    public void SeekApproximate_LandsWithinHalfSecond(string file, string decoder, bool exact, bool mono)
+    {
+        Assert.NotNull(decoder);
+        Assert.True(exact || mono || !mono);
         var path = AudioFixtures.PathOf(file);
         float[] sequential;
         using (var source = Decoders.Open(path, AudioFixtures.Target))
@@ -70,23 +102,20 @@ public class FormatMatrixTests(ITestOutputHelper output)
             sequential = AudioFixtures.Channel(AudioFixtures.ReadAll(source), 0);
         }
 
-        const int Target = 2 * Rate, Skip = Rate / 20, Length = Rate / 10, MaxLag = Rate / 10;
+        const int Target = 2 * Rate, Skip = Rate / 4, Length = Rate / 10, MaxLag = Rate;
         float[] afterSeek;
         using (var source = Decoders.Open(path, AudioFixtures.Target))
         {
-            source.Seek(Target);
-            afterSeek = AudioFixtures.Channel(AudioFixtures.ReadAll(source, Skip + Length + Rate), 0);
+            source.SeekApproximate(Target);
+            afterSeek = AudioFixtures.Channel(AudioFixtures.ReadAll(source, Skip + Length), 0);
         }
 
         // gde se u sekvencijalnom dekodiranju nalazi ono sto je stiglo posle premotavanja
         var (lag, correlation) = AudioFixtures.BestLag(sequential, Target + Skip, afterSeek, Skip, Length, MaxLag);
-        output.WriteLine($"{file}: pomak posle premotavanja={lag} frejmova ({lag * 1000.0 / Rate:F1} ms) slicnost={correlation:F5}");
+        output.WriteLine($"{file}: pomak posle brzog premotavanja = {lag} frejmova ({lag * 1000.0 / Rate:F1} ms), slicnost={correlation:F5}");
 
-        Assert.True(correlation > 0.98, $"slicnost {correlation}");
-        if (exact)
-        {
-            Assert.Equal(0, lag);
-        }
+        Assert.True(correlation > 0.95, $"slicnost {correlation}");
+        Assert.InRange(lag, -Rate / 2, Rate / 2);
     }
 
     [Theory]

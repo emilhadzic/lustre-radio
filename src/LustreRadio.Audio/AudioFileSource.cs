@@ -81,8 +81,12 @@ public sealed class AudioFileSource : ISampleSource
         return read / 2;
     }
 
-    /// <summary>Premotava na zadati frejm (u formatu engine-a). Tacnost zavisi od dekodera.</summary>
-    public void Seek(long frame)
+    /// <summary>
+    /// Brzo premotavanje na priblizno mesto (u frejmovima engine-a). NIJE tacno u uzorak:
+    /// izmereno odstupanje zavisi od dekodera i formata (vidi docs/STATUS.md).
+    /// Koristi se samo za nastavak pesme posle restarta, nikad za racunanje prelaza.
+    /// </summary>
+    public void SeekApproximate(long frame)
     {
         var block = _reader.WaveFormat.BlockAlign;
         var sourceFrame = IsResampled
@@ -91,6 +95,29 @@ public sealed class AudioFileSource : ISampleSource
         var position = Math.Clamp(sourceFrame * block, 0, Math.Max(0, _reader.Length));
         _reader.Position = position - (position % block);
         _chain = BuildChain();
+    }
+
+    /// <summary>
+    /// Tacno preskakanje: dekodira i odbacuje zadati broj frejmova od trenutnog mesta.
+    /// Sporije od premotavanja, ali daje iste uzorke kao dekodiranje od pocetka.
+    /// Vraca broj stvarno preskocenih frejmova (manje ako se fajl zavrsi).
+    /// </summary>
+    public long SkipFrames(long frames)
+    {
+        long skipped = 0;
+        while (skipped < frames)
+        {
+            var want = (int)Math.Min(_buffer.Length, (frames - skipped) * 2) & ~1;
+            var read = _chain.Read(_buffer, 0, want);
+            if (read <= 0)
+            {
+                break;
+            }
+
+            skipped += read / 2;
+        }
+
+        return skipped;
     }
 
     public void Dispose() => _reader.Dispose();
