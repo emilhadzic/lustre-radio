@@ -70,6 +70,7 @@ public sealed class RadioSession
     private QueuedTrack? _resume;
     private string? _resumedId;
     private double _resumeOffsetSeconds;
+    private bool _everPlayed;
 
     public RadioSession(RadioDirector director, AudioFormat format, PlaybackSnapshot? snapshot = null)
     {
@@ -135,9 +136,13 @@ public sealed class RadioSession
         if (_resume is { } resume)
         {
             _resume = null;
+            _everPlayed = true;
             return resume;
         }
 
-        return _director.NextTrack();
+        // Posle zatvaranja muzika mora da traje jos dok traje stisavanje.
+        var queued = _director.NextTrack(closing: _everPlayed && !_fader.Ended);
+        _everPlayed |= queued is not null;
+        return queued;
     }
 }

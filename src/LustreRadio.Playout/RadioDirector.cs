@@ -63,6 +63,7 @@ public sealed class RadioDirector
     private DateTime _cacheFrom = DateTime.MaxValue;
     private DateTime _cacheUntil = DateTime.MinValue;
     private bool _cacheShouldPlay;
+    private ScheduleDecision? _lastOpenDecision;
 
     public RadioDirector(LustreDatabase db, IClock clock, AudioFormat format, Random random, DirectorOptions? options = null, Action<string>? log = null)
     {
@@ -166,14 +167,27 @@ public sealed class RadioDirector
         }
     }
 
-    /// <summary>Sledeca pesma po rasporedu i rotaciji, ili null ako se ne svira ili nema nicega dozvoljenog.</summary>
-    public QueuedTrack? NextTrack()
+    /// <summary>
+    /// Sledeca pesma po rasporedu i rotaciji, ili null ako se ne svira ili nema nicega dozvoljenog.
+    /// closing = true: emitovanje se upravo stisava posle zatvaranja; muzika mora da traje
+    /// do kraja stisavanja, pa se bira jos pesama iz poslednjeg programa.
+    /// </summary>
+    public QueuedTrack? NextTrack(bool closing = false)
     {
         lock (_sync)
         {
             var now = _clock.NowLocal;
             var decision = ScheduleEngine.Evaluate(_schedule, _override, now);
-            if (!decision.ShouldPlay || decision.Program is null)
+            if (decision.ShouldPlay)
+            {
+                _lastOpenDecision = decision;
+            }
+            else if (closing && _lastOpenDecision is not null)
+            {
+                decision = _lastOpenDecision;
+            }
+
+            if (decision.Program is null)
             {
                 return null;
             }
@@ -241,7 +255,7 @@ public sealed class RadioDirector
             }
 
             var info = _catalog.FirstOrDefault(t => t.Id == snapshot.TrackId);
-            if (info is not { Broadcastable: true, Blocked: false } || record.DurationSeconds - snapshot.PositionSeconds < 5)
+            if (info is not { Broadcastable: true, Blocked: false } || record.DurationSeconds - snapshot.PositionSeconds < 2)
             {
                 return null;
             }

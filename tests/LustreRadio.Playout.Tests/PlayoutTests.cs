@@ -124,7 +124,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
     [Fact]
     public void DuringWorkingHours_PlaysContinuously_AndWritesHistory()
     {
-        AddTones(8, 3);
+        AddTones(14, 3);
         var (director, clock) = _env.Director(Monday.AddHours(10));
         var session = TestEnvironment.Session(director, clock);
         var started = new List<NowPlaying>();
@@ -144,7 +144,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
             Assert.Equal("Morning", h.Part);
             Assert.Equal("WeeklySlot", h.Source);
         });
-        Assert.Equal(history.Count, history.Select(h => h.TrackId).Distinct().Count()); // 8 pesama, nijedna dvaput u 20 s
+        Assert.Equal(history.Count, history.Select(h => h.TrackId).Distinct().Count()); // 14 pesama, nijedna dvaput u 20 s
     }
 
     [Fact] // T-SCH-01 kroz ceo lanac
@@ -182,6 +182,9 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         // posle zatvaranja nista vise ne krece
         Assert.False(director.ShouldPlayNow());
         Assert.Null(director.NextTrack());
+
+        // muzika je trajala kroz celo stisavanje: pesme su birane i posle 23:30
+        Assert.True(session.Sequencer.Events.Count(e => e.StartFrame > 10 * Rate) >= 4);
     }
 
     [Fact]
