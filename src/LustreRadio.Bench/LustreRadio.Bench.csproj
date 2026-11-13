@@ -2,9 +2,14 @@
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Exe</OutputType>
+    <AssemblyName>LustreRadio.Bench</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\LustreRadio.Core\LustreRadio.Core.csproj" />
     <ProjectReference Include="..\LustreRadio.Audio\LustreRadio.Audio.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="..\..\testdata\audio\chirp_*" Link="proba\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="UPUTSTVO.txt" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 </Project>

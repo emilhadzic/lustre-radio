@@ -1,0 +1,16 @@
+LUSTRE RADIO - program za merenje (Bench)
+=========================================
+
+1. Stavite slusalice ili ukljucite zvucnike. Smanjite glasnocu pre pocetka.
+2. Dvoklik na LustreRadio.Bench.exe
+   (Ako Windows prikaze plavi prozor "Windows protected your PC":
+    kliknite "More info", pa "Run anyway". Program nije potpisan.)
+3. Program meri brzinu racunara i zatim pusta probni zvuk:
+   - ako folder "muzika" pored programa NE postoji: sest tihih tonova sa prelazima (oko 20 s);
+   - ako napravite folder "muzika" i u njega stavite nekoliko pesama
+     (MP3, FLAC, WAV, M4A, AAC, OGG): pusta prvih 25 s svake pesme, sa prelazima od 5 s.
+4. Na kraju program pita da li ste culi glatke prelaze. Odgovorite d ili n.
+5. Izvestaj se cuva u fajlu "LustreRadio-Bench-izvestaj.txt" pored programa.
+   Posaljite taj fajl.
+
+Program ne menja nista na racunaru i ne koristi internet.

@@ -36,5 +36,12 @@ jobs:
             if (-not $logs) { throw "$($r.log): nema log fajla" }
             Get-Content $logs[0].FullName | Select-Object -Last 1
           }
-          & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe"; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
+          & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
           & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe"; if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
+      - name: Paket za preuzimanje (Bench)
+        run: dotnet publish src/LustreRadio.Bench/LustreRadio.Bench.csproj -c Release -r win-x64 --self-contained true -o publish/LustreRadio-Bench
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LustreRadio-Bench
+          path: publish/LustreRadio-Bench
+          retention-days: 30
