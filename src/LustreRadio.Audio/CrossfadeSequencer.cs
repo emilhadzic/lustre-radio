@@ -38,10 +38,12 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private TrackEvent? _incomingEvent;
     private bool _transition;
     private bool _queueEmpty;
+    private readonly long _skipFadeFrames;
     private long _pendingFadeIn;
     private long _outFrames;
+    private volatile bool _skipRequested;
 
-    public CrossfadeSequencer(AudioFormat format, Func<QueuedTrack?> nextTrack, double crossfadeSeconds)
+    public CrossfadeSequencer(AudioFormat format, Func<QueuedTrack?> nextTrack, double crossfadeSeconds, double initialFadeInSeconds = 0)
     {
         if (format.Channels != 2)
         {
@@ -53,6 +55,8 @@ public sealed class CrossfadeSequencer : IFrameProvider
         _nextTrack = nextTrack ?? throw new ArgumentNullException(nameof(nextTrack));
         _crossfadeFrames = format.FramesFromSeconds(crossfadeSeconds);
         _recoveryFadeFrames = format.FramesFromSeconds(0.05);
+        _skipFadeFrames = format.FramesFromSeconds(Math.Min(2.0, Math.Max(0.05, crossfadeSeconds)));
+        _pendingFadeIn = format.FramesFromSeconds(Math.Max(0, initialFadeInSeconds));
     }
 
     public AudioFormat Format { get; }
@@ -60,7 +64,31 @@ public sealed class CrossfadeSequencer : IFrameProvider
     public IReadOnlyList<TrackEvent> Events => _events;
 
     /// <summary>Ukupan broj do sada proizvedenih frejmova.</summary>
-    public long OutputFrames => _outFrames;
+    public long OutputFrames => Interlocked.Read(ref _outFrames);
+
+    /// <summary>Prelazak na sledecu pesmu odmah, kratkim prelazom (dugme "Next"). Sme sa druge niti.</summary>
+    public void RequestSkip() => _skipRequested = true;
+
+    /// <summary>Poslednja pustena pesma i gde je pocela u izlaznom toku. Sme sa druge niti.</summary>
+    public bool TryGetLatestEvent(out string id, out long startFrame)
+    {
+        lock (_events)
+        {
+            for (var i = _events.Count - 1; i >= 0; i--)
+            {
+                if (!_events[i].FailedToLoad)
+                {
+                    id = _events[i].Id;
+                    startFrame = _events[i].StartFrame;
+                    return true;
+                }
+            }
+        }
+
+        id = string.Empty;
+        startFrame = 0;
+        return false;
+    }
 
     public int Read(Span<float> buffer)
     {
@@ -81,6 +109,17 @@ public sealed class CrossfadeSequencer : IFrameProvider
             }
 
             var chunk = Math.Min(total - done, MaxChunkFrames);
+
+            if (_skipRequested)
+            {
+                _skipRequested = false;
+                if (!_transition)
+                {
+                    var left = _current.RemainingFrames ?? _skipFadeFrames;
+                    BeginTransition(Math.Max(1, Math.Min(_skipFadeFrames, left)));
+                    _queueEmpty = false; // ako sledece nema, obican tok se nastavlja
+                }
+            }
 
             if (!_transition && !_queueEmpty && _crossfadeFrames > 0 && _current.RemainingFrames is long remaining)
             {
@@ -130,7 +169,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             }
 
             done += advance;
-            _outFrames += advance;
+            Interlocked.Add(ref _outFrames, advance);
         }
 
         return done;
@@ -200,7 +239,10 @@ public sealed class CrossfadeSequencer : IFrameProvider
             }
 
             trackEvent = new TrackEvent { Id = track.Id, StartFrame = _outFrames };
-            _events.Add(trackEvent);
+            lock (_events)
+            {
+                _events.Add(trackEvent);
+            }
 
             try
             {

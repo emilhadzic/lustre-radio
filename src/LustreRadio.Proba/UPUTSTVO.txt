@@ -1,0 +1,23 @@
+LUSTRE RADIO - proba radija
+===========================
+
+Ovaj program je PROBNA verzija radija: sam bira pesme iz foldera "muzika",
+pusta ih sa prelazima i pamti gde je stao. Nema jos pravi interfejs.
+
+1. Pored programa napravite folder "muzika" i ubacite pesme (bar 5-6).
+2. Stavite slusalice, smanjite glasnocu, dvoklik na LustreRadio.Proba.exe
+   (plavi prozor "Windows protected your PC": More info -> Run anyway).
+3. Program skenira pesme. Zatim pita da li da ih oznaci kao proverene ZA PROBU.
+   Odgovorite d. (U pravom radiju pesma ne svira dok joj licenca nije stvarno proverena;
+   ovo je samo da biste mogli da cujete probu. Probna baza je u folderu "podaci"
+   pored programa i nema veze sa bazom koja ce raditi u lokalu.)
+4. Muzika krece. Tasteri:
+      N = sledeca pesma
+      Q = kraj
+5. PROBA NASTAVKA: pritisnite Q usred pesme, pa ponovo pokrenite program u roku
+   od 10 minuta. Treba da nastavi ISTU pesmu, otprilike odakle je stala.
+6. Sve sto program ispise cuva se i u fajlu "LustreRadio-Proba-dnevnik.txt".
+   Posaljite taj fajl.
+
+U probi je radno vreme "ceo dan", da mozete da slusate u bilo koje doba.
+Program ne koristi internet i ne menja vase pesme.

@@ -7,7 +7,9 @@
     <Project Path="src/LustreRadio.Library/LustreRadio.Library.csproj" />
     <Project Path="src/LustreRadio.Ipc/LustreRadio.Ipc.csproj" />
     <Project Path="src/LustreRadio.Voice/LustreRadio.Voice.csproj" />
+    <Project Path="src/LustreRadio.Playout/LustreRadio.Playout.csproj" />
     <Project Path="src/LustreRadio.Engine/LustreRadio.Engine.csproj" />
+    <Project Path="src/LustreRadio.Proba/LustreRadio.Proba.csproj" />
     <Project Path="src/LustreRadio.UI/LustreRadio.UI.csproj" />
     <Project Path="src/LustreRadio.Watchdog/LustreRadio.Watchdog.csproj" />
     <Project Path="src/LustreRadio.Analyzer/LustreRadio.Analyzer.csproj" />
@@ -18,6 +20,7 @@
     <Project Path="tests/LustreRadio.Audio.Tests/LustreRadio.Audio.Tests.csproj" />
     <Project Path="tests/LustreRadio.Data.Tests/LustreRadio.Data.Tests.csproj" />
     <Project Path="tests/LustreRadio.Library.Tests/LustreRadio.Library.Tests.csproj" />
+    <Project Path="tests/LustreRadio.Playout.Tests/LustreRadio.Playout.Tests.csproj" />
     <Project Path="tests/LustreRadio.Architecture.Tests/LustreRadio.Architecture.Tests.csproj" />
   </Folder>
 </Solution>

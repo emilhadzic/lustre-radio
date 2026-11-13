@@ -10,6 +10,7 @@
     <ProjectReference Include="..\LustreRadio.Data\LustreRadio.Data.csproj" />
     <ProjectReference Include="..\LustreRadio.Library\LustreRadio.Library.csproj" />
     <ProjectReference Include="..\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
+    <ProjectReference Include="..\LustreRadio.Playout\LustreRadio.Playout.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Serilog" />

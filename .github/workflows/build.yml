@@ -23,7 +23,7 @@ jobs:
           $ErrorActionPreference = 'Stop'
           $tfm = 'bin\Release\net10.0-windows'
           $runs = @(
-            @{ exe = "src\LustreRadio.Engine\$tfm\LustreRadio.Engine.exe"; args = @(); log = 'engine' },
+            @{ exe = "src\LustreRadio.Engine\$tfm\LustreRadio.Engine.exe"; args = @('--smoke'); log = 'engine' },
             @{ exe = "src\LustreRadio.Watchdog\$tfm\LustreRadio.Watchdog.exe"; args = @(); log = 'watchdog' },
             @{ exe = "src\LustreRadio.UI\$tfm\LustreRadio.UI.exe"; args = @('--smoke'); log = 'ui' }
           )
@@ -38,10 +38,18 @@ jobs:
           }
           & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
           & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe"; if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
+          & "src\LustreRadio.Proba\$tfm\LustreRadio.Proba.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Proba' }
       - name: Paket za preuzimanje (Bench)
         run: dotnet publish src/LustreRadio.Bench/LustreRadio.Bench.csproj -c Release -r win-x64 --self-contained true -o publish/LustreRadio-Bench
       - uses: actions/upload-artifact@v4
         with:
           name: LustreRadio-Bench
           path: publish/LustreRadio-Bench
+          retention-days: 30
+      - name: Paket za preuzimanje (Proba radija)
+        run: dotnet publish src/LustreRadio.Proba/LustreRadio.Proba.csproj -c Release -r win-x64 --self-contained true -o publish/LustreRadio-Proba
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LustreRadio-Proba
+          path: publish/LustreRadio-Proba
           retention-days: 30

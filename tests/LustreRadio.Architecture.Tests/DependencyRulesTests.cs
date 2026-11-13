@@ -23,7 +23,9 @@ public class DependencyRulesTests
         ["Library"] = ["Core", "Audio"],
         ["Ipc"] = ["Core"],
         ["Voice"] = ["Core"],
-        ["Engine"] = ["Core", "Audio", "Analysis", "Data", "Library", "Ipc"],
+        ["Playout"] = ["Core", "Audio", "Analysis", "Data", "Library", "Ipc"],
+        ["Engine"] = ["Core", "Audio", "Analysis", "Data", "Library", "Ipc", "Playout"],
+        ["Proba"] = ["Core", "Audio", "Data", "Library", "Playout"],
         ["UI"] = ["Core", "Ipc", "Voice", "Data", "Audio"],
         ["Watchdog"] = ["Core", "Ipc"],
         ["Analyzer"] = ["Core", "Audio", "Analysis"],
@@ -71,6 +73,7 @@ public class DependencyRulesTests
     {
         Assert.DoesNotContain(Prefix + "Voice", ReferencesOf(FindAssembly("Engine")));
         Assert.DoesNotContain(Prefix + "Voice", ReferencesOf(FindAssembly("Watchdog")));
+        Assert.DoesNotContain(Prefix + "Voice", ReferencesOf(FindAssembly("Playout")));
     }
 
     /// <summary>Dokaz da citanje referenci zaista radi (da testovi iznad ne prolaze "na prazno").</summary>
