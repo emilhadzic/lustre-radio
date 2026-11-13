@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LustreRadio.Core\LustreRadio.Core.csproj" />
+    <ProjectReference Include="..\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Serilog" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <Compile Include="..\Shared\LogSetup.cs" Link="Shared\LogSetup.cs" />
+  </ItemGroup>
+</Project>

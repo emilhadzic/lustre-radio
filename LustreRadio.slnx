@@ -1,0 +1,20 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/LustreRadio.Core/LustreRadio.Core.csproj" />
+    <Project Path="src/LustreRadio.Audio/LustreRadio.Audio.csproj" />
+    <Project Path="src/LustreRadio.Analysis/LustreRadio.Analysis.csproj" />
+    <Project Path="src/LustreRadio.Data/LustreRadio.Data.csproj" />
+    <Project Path="src/LustreRadio.Library/LustreRadio.Library.csproj" />
+    <Project Path="src/LustreRadio.Ipc/LustreRadio.Ipc.csproj" />
+    <Project Path="src/LustreRadio.Voice/LustreRadio.Voice.csproj" />
+    <Project Path="src/LustreRadio.Engine/LustreRadio.Engine.csproj" />
+    <Project Path="src/LustreRadio.UI/LustreRadio.UI.csproj" />
+    <Project Path="src/LustreRadio.Watchdog/LustreRadio.Watchdog.csproj" />
+    <Project Path="src/LustreRadio.Analyzer/LustreRadio.Analyzer.csproj" />
+    <Project Path="src/LustreRadio.Bench/LustreRadio.Bench.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/LustreRadio.Core.Tests/LustreRadio.Core.Tests.csproj" />
+    <Project Path="tests/LustreRadio.Architecture.Tests/LustreRadio.Architecture.Tests.csproj" />
+  </Folder>
+</Solution>

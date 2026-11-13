@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\LustreRadio.Core\LustreRadio.Core.csproj" />
+    <ProjectReference Include="..\LustreRadio.Audio\LustreRadio.Audio.csproj" />
+  </ItemGroup>
+</Project>

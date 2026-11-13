@@ -7,20 +7,34 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
-      - name: Info o okruzenju
-        shell: pwsh
-        continue-on-error: true
-        run: |
-          dotnet --version
-          (Get-CimInstance Win32_OperatingSystem).Caption
-          "Media Foundation (mfplat.dll): " + (Test-Path "$env:windir\System32\mfplat.dll")
-          "MF read-write (mfreadwrite.dll): " + (Test-Path "$env:windir\System32\mfreadwrite.dll")
-          "Audio uredjaji: " + @(Get-CimInstance Win32_SoundDevice).Count
+      - name: Build
+        run: dotnet build LustreRadio.slnx -c Release
       - name: Test
-        run: dotnet test tests/LustreRadio.Core.Tests/LustreRadio.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
+        run: dotnet test LustreRadio.slnx -c Release --no-build --logger "console;verbosity=normal"
+      - name: Smoke (programi se pokrecu i pisu log)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tfm = 'bin\Release\net10.0-windows'
+          $runs = @(
+            @{ exe = "src\LustreRadio.Engine\$tfm\LustreRadio.Engine.exe"; args = @(); log = 'engine' },
+            @{ exe = "src\LustreRadio.Watchdog\$tfm\LustreRadio.Watchdog.exe"; args = @(); log = 'watchdog' },
+            @{ exe = "src\LustreRadio.UI\$tfm\LustreRadio.UI.exe"; args = @('--smoke'); log = 'ui' }
+          )
+          foreach ($r in $runs) {
+            if ($r.args.Count -gt 0) { $p = Start-Process $r.exe -ArgumentList $r.args -PassThru }
+            else { $p = Start-Process $r.exe -PassThru }
+            if (-not $p.WaitForExit(60000)) { $p.Kill(); throw "$($r.exe): nije zavrsio za 60 s" }
+            if ($p.ExitCode -ne 0) { throw "$($r.exe): izlazni kod $($p.ExitCode)" }
+            $logs = Get-ChildItem "$env:ProgramData\LustreRadio\logs\$($r.log)-*.log"
+            if (-not $logs) { throw "$($r.log): nema log fajla" }
+            Get-Content $logs[0].FullName | Select-Object -Last 1
+          }
+          & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe"; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
+          & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe"; if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
