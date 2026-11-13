@@ -17,9 +17,11 @@ Napomena: programi su u M0 samo kosturi bez funkcija.
 | 3. Glasnoća po pesmi, ograničeno pojačanje (T-AUD-07) | završeno 13.11.2026. | GitHub Actions: testovi prošli. Merenje LUFS-a same pesme dolazi u fazi M6; do tada se koristi podrazumevano pojačanje. |
 | 4a. Kružni bafer, nit za pripremu zvuka | završeno 13.11.2026. | GitHub Actions: put kroz nit daje isti zvuk kao offline renderer; test sa dve niti (2 miliona uzoraka) bez gubitka. |
 | 4b. WASAPI izlaz (osnovni) | **prošao na računaru vlasnika, 13.11.2026. 20:06** | Bench, slušalice HyperX (48 kHz), Windows 11: 20,1 s, 0 prekida, ocena slušanjem „d“. Samo veštački tonovi; prava muzika i duži rad još nisu probani. |
-| 4c. Praćenje promene uređaja, ponovno povezivanje, Bluetooth (T-AUD-09..11, T-BT) | nije započeto | – |
-| 5a. Bench.exe + paket za preuzimanje | završeno 13.11.2026. (bez stvarnog zvuka) | GitHub Actions: Bench se pokreće, meri i piše izveštaj. |
-| 5b. Režim „slab računar“ | nije započeto | – |
+| 4c. Ponovno povezivanje uređaja, promena podrazumevanog uređaja (T-AUD-09, 10) | logika **prošla na lažnom uređaju** (GitHub Actions, 13.11.2026.); **na pravom uređaju nepokrenuto** | 5 testova: nestanak i povratak, promena podrazumevanog, bez uređaja na startu, neuspela otvaranja. Muzika nastavlja bez gubitka i ponavljanja. Čeka probu izvlačenjem slušalica (Bench) i Bluetooth (T-BT) na mini PC-ju. |
+| 4d. Fiksna sistemska glasnoća i mute (T-AUD-11) | nije započeto | – |
+| 5a. Bench.exe + paket za preuzimanje | završeno 13.11.2026. | vidi rezultate ispod |
+| 5b. Režim „slab računar“ | **preskočeno po odluci vlasnika (13.11.2026.)** | Posledica: nema procene za Celeron pre testova na mini PC-ju. |
+| Duža proba (1 sat) na računaru vlasnika | **nije rađena, po odluci vlasnika (13.11.2026.)** | Nije označena kao prošla. Dug rad se prvi put proverava noćnim testom na mini PC-ju (M4). |
 | – OGG Opus, rezervni FLAC dekoder | nije započeto | – |
 
 Nijedan test još nije pokrenut na stvarnom audio uređaju ni na mini PC-ju.
