@@ -16,7 +16,7 @@ Napomena: programi su u M0 samo kosturi bez funkcija.
 | 2. Dekoderi i matrica formata (T-AUD-04, T-AUD-06) | završeno 13.11.2026., osim Opus i libFLAC | GitHub Actions (Windows Server 2025): 60 audio testova prošlo. Nije pokrenuto na Windows 11 ni na mini PC-ju. |
 | 3. Glasnoća po pesmi, ograničeno pojačanje (T-AUD-07) | završeno 13.11.2026. | GitHub Actions: testovi prošli. Merenje LUFS-a same pesme dolazi u fazi M6; do tada se koristi podrazumevano pojačanje. |
 | 4a. Kružni bafer, nit za pripremu zvuka | završeno 13.11.2026. | GitHub Actions: put kroz nit daje isti zvuk kao offline renderer; test sa dve niti (2 miliona uzoraka) bez gubitka. |
-| 4b. WASAPI izlaz | **napisano, nepokrenuto na uređaju** | Na GitHub runner-u nema zvučne kartice; program to uredno prijavi. Čeka probu na računaru vlasnika (Bench). |
+| 4b. WASAPI izlaz (osnovni) | **prošao na računaru vlasnika, 13.11.2026. 20:06** | Bench, slušalice HyperX (48 kHz), Windows 11: 20,1 s, 0 prekida, ocena slušanjem „d“. Samo veštački tonovi; prava muzika i duži rad još nisu probani. |
 | 4c. Praćenje promene uređaja, ponovno povezivanje, Bluetooth (T-AUD-09..11, T-BT) | nije započeto | – |
 | 5a. Bench.exe + paket za preuzimanje | završeno 13.11.2026. (bez stvarnog zvuka) | GitHub Actions: Bench se pokreće, meri i piše izveštaj. |
 | 5b. Režim „slab računar“ | nije započeto | – |
@@ -62,3 +62,13 @@ Ovo NIJE mini PC; brojevi služe samo kao polazna tačka za poređenje.
 - Dekodiranje: MP3 135–381×, AAC/M4A 138–239×, FLAC 92–147×, OGG 87× brže od slušanja.
 - Priprema prelaza: 703 s zvuka za 2,03 s (346×); zauzeto 29 KB memorije tokom pripreme.
 - Memorija programa: radni skup 66 MB, privatno 34 MB.
+
+## Bench na računaru vlasnika (13.11.2026. 20:06)
+
+Windows 11 (10.0.26300), AMD Ryzen 9 5900X (24 logička jezgra), 64 GB. Ovo NIJE mini PC.
+
+- Indeks brzine procesora: 119 ms (GitHub runner: 220 ms; mini PC: još nije izmereno).
+- Dekodiranje preko Media Foundation radi na Windows 11: MP3 232–751×, AAC/M4A 266–535×, FLAC 213–391×, OGG 143×.
+- Priprema prelaza: 714×; 29 KB zauzeto; memorija programa 69–71 MB radni skup, 35 MB privatno.
+- Stvarna reprodukcija (WASAPI Shared, uređaj na 48 kHz): 6 tonova, 5 prelaza, 0 prekida, završeno samo, prelazi glatki po oceni vlasnika.
+- Merenje procesora tokom reprodukcije pokazalo 0,0 %: na 24 jezgra opterećenje je ispod rezolucije merenja.
