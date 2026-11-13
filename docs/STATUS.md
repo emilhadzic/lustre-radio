@@ -14,9 +14,13 @@ Napomena: programi su u M0 samo kosturi bez funkcija.
 |---|---|---|
 | 1. Deck, Standard Crossfade, limiter, izlaz u memoriju/WAV, offline renderer | završeno 13.11.2026. | GitHub Actions: 13 testova prošlo (T-AUD-01, 02, 03, 05 na veštačkim signalima; rad bez zauzimanja memorije; nezavisnost od veličine bloka). Provera testova: namerno pokvaren kod → 4 testa pala. |
 | 2. Dekoderi i matrica formata (T-AUD-04, T-AUD-06) | završeno 13.11.2026., osim Opus i libFLAC | GitHub Actions (Windows Server 2025): 60 audio testova prošlo. Nije pokrenuto na Windows 11 ni na mini PC-ju. |
-| 3. Glasnoća po pesmi (ograničeno pojačanje), T-AUD-07 | nije započeto | – |
-| 4. WASAPI izlaz, nit za dekodiranje, ponovno povezivanje uređaja, T-AUD-08..11, T-BT | nije započeto | traži pravi računar sa zvukom |
-| 5. Bench.exe + režim „slab računar“ | nije započeto | – |
+| 3. Glasnoća po pesmi, ograničeno pojačanje (T-AUD-07) | završeno 13.11.2026. | GitHub Actions: testovi prošli. Merenje LUFS-a same pesme dolazi u fazi M6; do tada se koristi podrazumevano pojačanje. |
+| 4a. Kružni bafer, nit za pripremu zvuka | završeno 13.11.2026. | GitHub Actions: put kroz nit daje isti zvuk kao offline renderer; test sa dve niti (2 miliona uzoraka) bez gubitka. |
+| 4b. WASAPI izlaz | **napisano, nepokrenuto na uređaju** | Na GitHub runner-u nema zvučne kartice; program to uredno prijavi. Čeka probu na računaru vlasnika (Bench). |
+| 4c. Praćenje promene uređaja, ponovno povezivanje, Bluetooth (T-AUD-09..11, T-BT) | nije započeto | – |
+| 5a. Bench.exe + paket za preuzimanje | završeno 13.11.2026. (bez stvarnog zvuka) | GitHub Actions: Bench se pokreće, meri i piše izveštaj. |
+| 5b. Režim „slab računar“ | nije započeto | – |
+| – OGG Opus, rezervni FLAC dekoder | nije započeto | – |
 
 Nijedan test još nije pokrenut na stvarnom audio uređaju ni na mini PC-ju.
 
@@ -49,3 +53,12 @@ Zaključci:
 - POS radi preko celog ekrana i ne koristi zvuk. **Ništa se ne prikazuje preko kase**; interfejs radija se otvara posebno, po potrebi.
 - Windows zvuci i obaveštenja se isključuju (POS ih ne koristi).
 - Vlasnik nema razvojni računar. Build radi GitHub; vlasnik preuzima gotov folder. Testovi stvarnog zvuka: njegov Windows računar sa slušalicama. Mini PC: samo kratko merenje i noćni završni testovi.
+
+## Bench na GitHub runner-u (AMD EPYC, 2 jezgra, 8 GB; 13.11.2026.)
+
+Ovo NIJE mini PC; brojevi služe samo kao polazna tačka za poređenje.
+
+- Indeks brzine procesora: 220 ms.
+- Dekodiranje: MP3 135–381×, AAC/M4A 138–239×, FLAC 92–147×, OGG 87× brže od slušanja.
+- Priprema prelaza: 703 s zvuka za 2,03 s (346×); zauzeto 29 KB memorije tokom pripreme.
+- Memorija programa: radni skup 66 MB, privatno 34 MB.
