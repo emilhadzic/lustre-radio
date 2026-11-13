@@ -9,6 +9,10 @@ LUSTRE RADIO - program za merenje (Bench)
    - ako folder "muzika" pored programa NE postoji: sest tihih tonova sa prelazima (oko 20 s);
    - ako napravite folder "muzika" i u njega stavite nekoliko pesama
      (MP3, FLAC, WAV, M4A, AAC, OGG): pusta prvih 25 s svake pesme, sa prelazima od 5 s.
+   Program pita koliko sekundi svake pesme da pusti (Enter = 25, 0 = cele pesme).
+   PROBA PONOVNOG POVEZIVANJA: dok muzika svira, izvucite slusalice ili ugasite zvucnik,
+   sacekajte desetak sekundi i vratite ih. Muzika treba sama da nastavi odakle je stala.
+   Taster Q prekida pustanje.
 4. Na kraju program pita da li ste culi glatke prelaze. Odgovorite d ili n.
 5. Izvestaj se cuva u fajlu "LustreRadio-Bench-izvestaj.txt" pored programa.
    Posaljite taj fajl.

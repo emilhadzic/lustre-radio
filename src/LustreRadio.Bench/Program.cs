@@ -162,7 +162,7 @@ public static class Program
         AudioFormat format;
         try
         {
-            (format, var deviceName) = WasapiPlayer.QueryDefaultDevice();
+            (format, var deviceName) = ResilientOutput.QueryDefaultDevice();
             Line($"Uredjaj: {deviceName}, {format.SampleRate} Hz");
         }
         catch (Exception ex)
@@ -181,10 +181,22 @@ public static class Program
         var settings = new LoudnessSettings();
         if (files.Count > 0)
         {
-            const double PartSeconds = 25;
+            double partSeconds = 25;
+            if (!auto)
+            {
+                Console.Write("Koliko sekundi svake pesme da pustim? (Enter = 25, 0 = cele pesme): ");
+                if (double.TryParse(Console.ReadLine(), NumberStyles.Float, CultureInfo.InvariantCulture, out var typed) && typed >= 0)
+                {
+                    partSeconds = typed;
+                }
+            }
+
+            var wholeTracks = partSeconds == 0;
             crossfade = 5;
-            expectedSeconds = files.Count * PartSeconds;
-            Line($"Pustam prvih {PartSeconds:F0} s svake od {files.Count} pesama iz foldera 'muzika', prelazi {crossfade:F0} s.");
+            expectedSeconds = wholeTracks ? double.NaN : (files.Count * partSeconds) - ((files.Count - 1) * crossfade);
+            Line(wholeTracks
+                ? $"Pustam cele pesme ({files.Count}) iz foldera 'muzika', prelazi {crossfade:F0} s."
+                : $"Pustam prvih {partSeconds:F0} s svake od {files.Count} pesama iz foldera 'muzika', prelazi {crossfade:F0} s.");
             var i = 0;
             next = () =>
             {
@@ -197,7 +209,7 @@ public static class Program
                         Line($"  {Path.GetFileName(file)}: dekoder {source.DecoderId}, {source.SourceSampleRate} Hz, {source.SourceChannels} kan.");
                         return new QueuedTrack(
                             Path.GetFileName(file),
-                            new LimitedSource(source, format.FramesFromSeconds(PartSeconds)),
+                            wholeTracks ? source : new LimitedSource(source, format.FramesFromSeconds(partSeconds)),
                             TrackGain.ToLinear(TrackGain.ComputeDb(null, null, settings)));
                     }
                     catch (Exception ex)
@@ -225,34 +237,60 @@ public static class Program
         var sequencer = new CrossfadeSequencer(format, next, crossfade);
         var ring = new FloatRingBuffer(65536);
         using var pump = new RenderPump(sequencer, new Limiter(format), ring);
-        using var player = new WasapiPlayer(ring, pump, format);
-        using var stopped = new ManualResetEventSlim();
-        Exception? stopError = null;
+        using var output = new ResilientOutput(ring, pump, format);
         Exception? pumpError = null;
         pump.Error += ex => pumpError = ex;
-        player.Stopped += ex =>
+        output.StateChanged += (state, detail) => Console.WriteLine(state switch
         {
-            stopError = ex;
-            stopped.Set();
-        };
+            OutputState.Playing => "  [zvuk ide na: " + detail + "]",
+            OutputState.Disconnected => "  [ZVUCNI UREDJAJ NIJE POVEZAN - cekam da se vrati...]",
+            _ => "  [" + state + "]",
+        });
+
+        if (!auto)
+        {
+            Console.WriteLine("Proba ponovnog povezivanja: dok muzika svira, izvucite slusalice ili ugasite zvucnik,");
+            Console.WriteLine("sacekajte desetak sekundi i vratite ih. Muzika treba sama da nastavi.");
+            Console.WriteLine("Za prekid pritisnite taster Q.");
+        }
 
         using var process = Process.GetCurrentProcess();
         var cpuBefore = process.TotalProcessorTime;
         var sw = Stopwatch.StartNew();
         pump.Start();
-        player.Start();
-        var finished = stopped.Wait(TimeSpan.FromSeconds(expectedSeconds + 20));
+        output.Start();
+
+        var finished = false;
+        var interrupted = false;
+        while (!finished)
+        {
+            finished = output.WaitUntilFinished(TimeSpan.FromMilliseconds(200));
+            if (auto && sw.Elapsed.TotalSeconds > 60)
+            {
+                break;
+            }
+
+            if (!auto && !Console.IsInputRedirected && Console.KeyAvailable && Console.ReadKey(intercept: true).Key == ConsoleKey.Q)
+            {
+                interrupted = true;
+                break;
+            }
+        }
+
         sw.Stop();
         process.Refresh();
         var cpuPercent = (process.TotalProcessorTime - cpuBefore).TotalSeconds / sw.Elapsed.TotalSeconds / Environment.ProcessorCount * 100;
 
-        Line($"Trajanje: {sw.Elapsed.TotalSeconds:F1} s; zavrseno samo: {(finished ? "da" : "NE (isteklo vreme)")}");
-        Line($"Prekidi zvuka (frejmova tisine zbog kasnjenja): {player.UnderrunFrames}");
-        Line($"Procesor tokom reprodukcije: {cpuPercent:F1} % (od svih jezgara)");
+        Line($"Trajanje: {sw.Elapsed.TotalSeconds:F1} s" + (double.IsNaN(expectedSeconds) ? string.Empty : $" (plan bez zastoja: {expectedSeconds:F0} s)") +
+            $"; zavrseno samo: {(finished ? "da" : interrupted ? "NE (prekinuto tasterom Q)" : "NE (isteklo vreme)")}");
+        Line($"Prekidi zvuka (frejmova tisine zbog kasnjenja): {output.UnderrunFrames}");
+        Line($"Ponovna povezivanja uredjaja: {output.Reconnects}");
+        Line($"Procesor tokom reprodukcije: {cpuPercent:F2} % (od svih jezgara)");
         Line($"Memorija programa: radni skup {process.WorkingSet64 / 1024.0 / 1024:F0} MB, privatno {process.PrivateMemorySize64 / 1024.0 / 1024:F0} MB");
-        if (stopError is not null)
+        Line("Dnevnik izlaza:");
+        foreach (var entry in output.LogSnapshot())
         {
-            Line("Greska uredjaja: " + stopError.GetType().Name + ": " + stopError.Message);
+            Line("  " + entry);
         }
 
         if (pumpError is not null)
@@ -260,6 +298,7 @@ public static class Program
             Line("Greska pripreme zvuka: " + pumpError);
         }
 
+        Line("Pesme:");
         foreach (var e in sequencer.Events)
         {
             Line($"  {e.StartFrame / (double)format.SampleRate,6:F1} s  {e.Id}" +
@@ -273,6 +312,9 @@ public static class Program
             Console.Write("Da li ste culi glatke prelaze, bez pucketanja i bez tisine? (d/n): ");
             var answer = Console.ReadLine()?.Trim();
             Report.AppendLine("Ocena slusanjem (d/n): " + (string.IsNullOrEmpty(answer) ? "bez odgovora" : answer));
+            Console.Write("Ako ste izvlacili slusalice ili gasili zvucnik: da li je muzika sama nastavila? (d/n, Enter = nisam probao): ");
+            var reconnect = Console.ReadLine()?.Trim();
+            Report.AppendLine("Ponovno povezivanje po oceni (d/n): " + (string.IsNullOrEmpty(reconnect) ? "nije probano" : reconnect));
         }
     }
 

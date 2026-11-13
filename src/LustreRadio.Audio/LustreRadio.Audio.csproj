@@ -11,4 +11,7 @@
     <PackageReference Include="NAudio.Vorbis" />
     <PackageReference Include="NLayer.NAudioSupport" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LustreRadio.Audio.Tests" />
+  </ItemGroup>
 </Project>
