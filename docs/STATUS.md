@@ -106,7 +106,7 @@ Napomene uz korak 1:
 | Korak | Stanje | Dokaz |
 |---|---|---|
 | 1. Baza (SQLite, WAL), skladišta, kopija i provera; skener biblioteke | završeno 13.11.2026. | GitHub Actions: 12 testova baze + 14 testova skenera prošlo (ukupno 217). |
-| 2. Engine: indeksiranje foldera u bazu, puštanje po rasporedu iz baze, snimak stanja i nastavak | nije započeto | – |
+| 2. Radio koji sam svira: indeksiranje foldera, reditelj (raspored + rotacija + kapija licenci), stišavanje na zatvaranju, snimak stanja i nastavak, dugme Next | **logika završena 13.11.2026.; sa pravim uređajem nepokrenuto** | GitHub Actions: 14 testova celog lanca bez uređaja (vreme teče sa zvukom). Čeka probu vlasnika (LustreRadio-Proba). |
 | 3. Komunikacija sa interfejsom (IPC), minimalan unos licence | nije započeto | – |
 
 Napomene uz korak 1:
@@ -115,3 +115,11 @@ Napomene uz korak 1:
 - Status „Provereno“ se ne može upisati mimo pravila ni direktno kroz skladište (test).
 - Skener meri tačnu dužinu i vrh dekodiranjem celog fajla. Izmereno: AAC vraća vrhove do −2,8 dBFS za signal od −6 dBFS, pa se vrh ne sme pretpostaviti.
 - Duplikati se prepoznaju po istom sadržaju fajla (heš); prepoznavanje iste pesme u različitim formatima (akustički otisak) nije urađeno.
+
+Napomene uz M3 korak 2:
+- Nova biblioteka `LustreRadio.Playout` sadrži logiku radija; `Engine` (proces bez prozora) i `Proba` (probna konzola) je samo pokreću. Razlog: samostalni program ne može da koristi drugi program kao biblioteku.
+- Testovi su u prvom pokušaju otkrili pravu grešku: posle 23:30 nije birana sledeća pesma, pa bi muzika stala čim se tekuća završi, usred stišavanja. Ispravljeno: tokom stišavanja se biraju pesme iz poslednjeg programa.
+- Pre svakog puštanja proverava se da fajl nije menjan posle skeniranja (veličina i datum); izmenjen fajl se ne pušta dok se ponovo ne skenira i ne proveri licenca.
+- Upis istorije u bazu radi se na niti koja priprema zvuk (zaštićeno baferom od ~0,7 s). Biranje nekoliko pesama unapred, kako piše u specifikaciji 2.6, još nije urađeno.
+- `ProbeLicensing` i „uvek otvoreno“ postoje samo za probu; pravi Engine ih ne koristi.
+- Engine još nema nadzor (M4), vezu sa interfejsom (M3 korak 3) ni podešavanje foldera sa muzikom kroz interfejs.
