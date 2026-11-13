@@ -16,6 +16,8 @@
   <Folder Name="/tests/">
     <Project Path="tests/LustreRadio.Core.Tests/LustreRadio.Core.Tests.csproj" />
     <Project Path="tests/LustreRadio.Audio.Tests/LustreRadio.Audio.Tests.csproj" />
+    <Project Path="tests/LustreRadio.Data.Tests/LustreRadio.Data.Tests.csproj" />
+    <Project Path="tests/LustreRadio.Library.Tests/LustreRadio.Library.Tests.csproj" />
     <Project Path="tests/LustreRadio.Architecture.Tests/LustreRadio.Architecture.Tests.csproj" />
   </Folder>
 </Solution>

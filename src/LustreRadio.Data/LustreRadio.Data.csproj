@@ -5,4 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LustreRadio.Core\LustreRadio.Core.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" />
+  </ItemGroup>
 </Project>
