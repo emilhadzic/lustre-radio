@@ -72,3 +72,10 @@ Windows 11 (10.0.26300), AMD Ryzen 9 5900X (24 logička jezgra), 64 GB. Ovo NIJE
 - Priprema prelaza: 714×; 29 KB zauzeto; memorija programa 69–71 MB radni skup, 35 MB privatno.
 - Stvarna reprodukcija (WASAPI Shared, uređaj na 48 kHz): 6 tonova, 5 prelaza, 0 prekida, završeno samo, prelazi glatki po oceni vlasnika.
 - Merenje procesora tokom reprodukcije pokazalo 0,0 %: na 24 jezgra opterećenje je ispod rezolucije merenja.
+
+## Proba sa pravom muzikom na računaru vlasnika (13.11.2026. 20:16)
+
+- 5 MP3 pesama sa Pixabay-a (jedna 48 kHz, četiri 44,1 kHz pretvorene u 48 kHz), po 25 s, prelazi 5 s.
+- Pesme su krenule na 0, 20, 40, 60 i 80 s, tačno po planu; ukupno 105,1 s (plan 105 s); završeno samo.
+- 0 prekida zvuka; memorija 68 MB radni skup, 34 MB privatno; ocena slušanjem „d“.
+- Nije probano slušanjem: FLAC, M4A, AAC, OGG, WAV; rad duži od 2 minuta; glasnoća po pesmi (sve su puštene sa istim podrazumevanim utišanjem).
