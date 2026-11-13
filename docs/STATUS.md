@@ -5,7 +5,8 @@
 | M0 Temelj | završeno 13.11.2026. | GitHub Actions (Windows Server 2025, .NET 10): build, 31 test (5 Core, 26 arhitektonskih), smoke pokretanje svih 5 programa. Nije pokrenuto na mini PC-ju. |
 | M1 Audio jezgro | **zatvorena 13.11.2026. po odluci vlasnika, sa otvorenim stavkama** | Automatski testovi prošli; stvarni zvuk prošao na računaru vlasnika. Otvoreno (prenosi se dalje): ponovno povezivanje na pravom uređaju i Bluetooth (T-BT) nepokrenuti; fiksna sistemska glasnoća; OGG Opus; rezervni FLAC dekoder; ništa nije pokrenuto na mini PC-ju; duža proba nije rađena; režim „slab računar“ preskočen. |
 | M2 Logika | **završena 13.11.2026.** | GitHub Actions: 93 testa logike prošla. Kriterijum iz specifikacije (T-SCH, T-ROT, T-LIC, T-VOI-03) ispunjen na nivou čiste logike; povezivanje sa bazom i engine-om dolazi u M3. |
-| M3–M12 | nije započeto | – |
+| M3 Engine i baza | u toku | vidi „M3 po koracima“ |
+| M4–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
 
@@ -99,3 +100,18 @@ Napomene uz korak 1:
 - Željeni razmak ponavljanja glasovnih poruka (6 h kratke, 24 h duže) poštuje se kad poruka ima dovoljno; inače se bira najduže nepuštana, ali nikad ista dvaput zaredom. Za pun razmak treba oko 8 kratkih i 7 dužih poruka.
 - Sezonska, praznična ili događajna poruka ima prednost jednom u svom razmaku od 24 h (klizno), ne nužno kao prva duža poruka svakog dana.
 - Posle duže poruke kratka identifikacija ne ide bar 45 minuta.
+
+## M3 po koracima
+
+| Korak | Stanje | Dokaz |
+|---|---|---|
+| 1. Baza (SQLite, WAL), skladišta, kopija i provera; skener biblioteke | završeno 13.11.2026. | GitHub Actions: 12 testova baze + 14 testova skenera prošlo (ukupno 217). |
+| 2. Engine: indeksiranje foldera u bazu, puštanje po rasporedu iz baze, snimak stanja i nastavak | nije započeto | – |
+| 3. Komunikacija sa interfejsom (IPC), minimalan unos licence | nije započeto | – |
+
+Napomene uz korak 1:
+- Raspored i pravila se čuvaju kao JSON u tabeli `settings`, ne u posebnim tabelama (jednostavnije; ponašanje je isto). Provereno: raspored posle čuvanja daje iste odgovore.
+- Baza ne koristi Dapper iz specifikacije, već direktne upite (manje zavisnosti, isti rezultat).
+- Status „Provereno“ se ne može upisati mimo pravila ni direktno kroz skladište (test).
+- Skener meri tačnu dužinu i vrh dekodiranjem celog fajla. Izmereno: AAC vraća vrhove do −2,8 dBFS za signal od −6 dBFS, pa se vrh ne sme pretpostaviti.
+- Duplikati se prepoznaju po istom sadržaju fajla (heš); prepoznavanje iste pesme u različitim formatima (akustički otisak) nije urađeno.
