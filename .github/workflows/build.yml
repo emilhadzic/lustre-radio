@@ -1,0 +1,26 @@
+name: build
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Info o okruzenju
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          dotnet --version
+          (Get-CimInstance Win32_OperatingSystem).Caption
+          "Media Foundation (mfplat.dll): " + (Test-Path "$env:windir\System32\mfplat.dll")
+          "MF read-write (mfreadwrite.dll): " + (Test-Path "$env:windir\System32\mfreadwrite.dll")
+          "Audio uredjaji: " + @(Get-CimInstance Win32_SoundDevice).Count
+      - name: Test
+        run: dotnet test tests/LustreRadio.Core.Tests/LustreRadio.Core.Tests.csproj -c Release --logger "console;verbosity=normal"
