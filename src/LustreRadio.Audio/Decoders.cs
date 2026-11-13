@@ -52,7 +52,7 @@ public static class Decoders
             try
             {
                 reader = Create(id, path);
-                return new AudioFileSource(reader, target, id, path);
+                return new AudioFileSource(reader, target, id, path, kind);
             }
             catch (Exception ex)
             {

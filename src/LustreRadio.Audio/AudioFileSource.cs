@@ -14,7 +14,7 @@ public sealed class AudioFileSource : ISampleSource
     private readonly long? _lengthFrames;
     private ISampleProvider _chain;
 
-    internal AudioFileSource(WaveStream reader, AudioFormat target, string decoderId, string path)
+    internal AudioFileSource(WaveStream reader, AudioFormat target, string decoderId, string path, AudioKind kind)
     {
         if (target.Channels != 2)
         {
@@ -25,6 +25,7 @@ public sealed class AudioFileSource : ISampleSource
         Format = target;
         DecoderId = decoderId;
         FilePath = path;
+        Kind = kind;
         SourceSampleRate = reader.WaveFormat.SampleRate;
         SourceChannels = reader.WaveFormat.Channels;
         if (SourceSampleRate < 8000 || SourceChannels < 1)
@@ -50,6 +51,14 @@ public sealed class AudioFileSource : ISampleSource
     public string DecoderId { get; }
 
     public string FilePath { get; }
+
+    public AudioKind Kind { get; }
+
+    /// <summary>
+    /// Da li je brzo premotavanje upotrebljivo za ovaj fajl. Izmereno (GitHub Actions, 13.11.2026.):
+    /// FLAC preko Media Foundation promasi za vise od 1 s; ostali formati do ~0,15 s.
+    /// </summary>
+    public bool FastSeekIsReliable => !(DecoderId == Decoders.MediaFoundation && Kind == AudioKind.Flac);
 
     public int SourceSampleRate { get; }
 
@@ -95,6 +104,22 @@ public sealed class AudioFileSource : ISampleSource
         var position = Math.Clamp(sourceFrame * block, 0, Math.Max(0, _reader.Length));
         _reader.Position = position - (position % block);
         _chain = BuildChain();
+    }
+
+    /// <summary>
+    /// Nastavak pesme od zadatog mesta (posle restarta). Poziva se na tek otvorenom fajlu.
+    /// Koristi brzo premotavanje gde je pouzdano, inace tacno preskakanje.
+    /// </summary>
+    public void ResumeAt(long frame)
+    {
+        if (FastSeekIsReliable)
+        {
+            SeekApproximate(frame);
+        }
+        else
+        {
+            SkipFrames(frame);
+        }
     }
 
     /// <summary>

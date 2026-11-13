@@ -89,9 +89,9 @@ public class FormatMatrixTests(ITestOutputHelper output)
         Assert.True(worst < 1e-4, $"razlika {worst}");
     }
 
-    [Theory] // T-AUD-06: brzo premotavanje je priblizno; meri se koliko
+    [Theory] // T-AUD-06: nastavak pesme posle restarta pogadja mesto unutar pola sekunde
     [MemberData(nameof(Files))]
-    public void SeekApproximate_LandsWithinHalfSecond(string file, string decoder, bool exact, bool mono)
+    public void ResumeAt_LandsWithinHalfSecond(string file, string decoder, bool exact, bool mono)
     {
         Assert.NotNull(decoder);
         Assert.True(exact || mono || !mono);
@@ -106,16 +106,25 @@ public class FormatMatrixTests(ITestOutputHelper output)
         float[] afterSeek;
         using (var source = Decoders.Open(path, AudioFixtures.Target))
         {
-            source.SeekApproximate(Target);
+            source.ResumeAt(Target);
             afterSeek = AudioFixtures.Channel(AudioFixtures.ReadAll(source, Skip + Length), 0);
         }
 
         // gde se u sekvencijalnom dekodiranju nalazi ono sto je stiglo posle premotavanja
         var (lag, correlation) = AudioFixtures.BestLag(sequential, Target + Skip, afterSeek, Skip, Length, MaxLag);
-        output.WriteLine($"{file}: pomak posle brzog premotavanja = {lag} frejmova ({lag * 1000.0 / Rate:F1} ms), slicnost={correlation:F5}");
+        output.WriteLine($"{file}: pomak pri nastavku pesme = {lag} frejmova ({lag * 1000.0 / Rate:F1} ms), slicnost={correlation:F5}");
 
         Assert.True(correlation > 0.95, $"slicnost {correlation}");
         Assert.InRange(lag, -Rate / 2, Rate / 2);
+    }
+
+    [Fact]
+    public void Flac_UsesExactSkip_BecauseFastSeekIsUnreliable()
+    {
+        using var flac = Decoders.Open(AudioFixtures.PathOf("chirp_44k_stereo.flac"), AudioFixtures.Target);
+        using var mp3 = Decoders.Open(AudioFixtures.PathOf("chirp_44k_stereo_cbr.mp3"), AudioFixtures.Target);
+        Assert.False(flac.FastSeekIsReliable);
+        Assert.True(mp3.FastSeekIsReliable);
     }
 
     [Theory]
