@@ -7,7 +7,8 @@
 | M2 Logika | **završena 13.11.2026.** | GitHub Actions: 93 testa logike prošla. Kriterijum iz specifikacije (T-SCH, T-ROT, T-LIC, T-VOI-03) ispunjen na nivou čiste logike; povezivanje sa bazom i engine-om dolazi u M3. |
 | M3 Engine i baza | **završena 14.11.2026. (logika)**, sa otvorenim stavkama | GitHub Actions: 279 testova prošlo. Radio svira po rasporedu iz baze (proba vlasnika 14.11.). Otvoreno: veza sa interfejsom nije probana sa pravim interfejsom (ne postoji do M5); nastavak posle restarta i pauza nisu probani slušanjem; rezervni nivoi 4 i 6 (keširana lista, folder „Rezerva“) dolaze u M11; biranje pesama unapred. |
 | M4 Nadzor i pokretanje | **automatski deo završen 14.11.2026.**; proba na pravom računaru nije rađena | GitHub Actions: 297 testova + integracioni test sa pravim procesima. Otvoreno: pokretanje posle prijave/paljenja računara, odbijanje sesije 0 kod pravog servisa, „zvuk stoji“ sa pravim zvukom, sigurni režim u radu, rad 72 h na mini PC-ju. |
-| M5–M12 | nije započeto | – |
+| M5 Interfejs | **prvi deo napisan 14.11.2026.; nije probano rukom** | GitHub Actions: 412 testova; svi ekrani nacrtani u dve veličine i automatski provereni (kontrole ≥ 56 px, staju na ekran). Otvoreno: proba mišem i prstom, monitor na dodir (T-TCH), kod za oporavak PIN-a, dnevnik izmena, omot albuma, sledeća pesma, „Mirnije/Življe“. |
+| M6–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
 
@@ -184,3 +185,31 @@ Ostalo iz ovog koraka:
 - Skeniranje biblioteke sada ide u pozadini, da program odmah odgovara nadzoru.
 - Stanje koje audio proces šalje sadrži brojač zvuka, ID procesa i oznaku sigurnog režima.
 - Probni folder sa podacima: promenljiva `LUSTRE_DATA_ROOT` (koriste je testovi).
+
+## M5: interfejs, prvi deo (14.11.2026.)
+
+Dokaz za „prošao“: GitHub Actions, Windows Server 2025, 14.11.2026., pokretanje 43621207630, 412 testova.
+
+| Stavka | Stanje |
+|---|---|
+| Tekstovi na srpskom i engleskom, isti broj mesta za podatke (T-L10N-01) | prošao (GitHub; 91 tekst) |
+| Prikaz ekrana za zaposlene iz stanja audio procesa (svira, pauza, zatvoreno, nema veze, nema zvučnika, nema pesama) | prošao (GitHub, jedinični testovi) |
+| Veza koja se sama obnavlja (1 s → 5 s), zadržava poslednji prikaz, admin sesija se briše posle prekida | prošao (GitHub, pravi kanal) |
+| PIN: samo cifre, 4–8, novi PIN se unosi dvaput | prošao (GitHub) |
+| Admin komande bez važeće sesije se odbijaju, uključujući nove (jezik, izjava o licenci) (T-IPC-05) | prošao (GitHub) |
+| Folder sa muzikom mora da postoji | prošao (GitHub) |
+| Svaki ekran nacrtan u 1024×600 i 1366×768; svaka kontrola ≥ 56×56 px i cela na ekranu (deo T-TCH-01) | prošao (GitHub, automatska provera; slike pregledane) |
+| Dugme bez funkcije ne može da se napravi (T-UI-01) | obezbeđeno načinom pisanja koda; nema posebnog testa |
+| Klik/dodir na pravom prozoru: Pauza, Sledeća, glasnoća, PIN, dodavanje foldera, izjava, jezik | **napisano, nepokrenuto rukom** |
+| Monitor na dodir (T-TCH-01 prstom, T-TCH-02 gašenje monitora) | **nije probano** |
+| Zatvaranje interfejsa ne prekida muziku | po konstrukciji (odvojeni procesi); **nije probano slušanjem** |
+| Zaključavanje posle 3 min neaktivnosti; 5 pogrešnih PIN-ova → 5 min | pravila u audio procesu: prošao (ranije); ponašanje ekrana **nepokrenuto rukom** |
+
+Šta ekran za zaposlene još NEMA (ne prikazuje se dok ne radi): omot albuma, sledeća pesma, „Mirnije/Življe“ (traži analizu, M6), režim prelaza i miks (M7/M8).
+Šta admin još NEMA: raspored, miksevi, istorija, analiza, Voice Studio, backup, kod za oporavak PIN-a, dnevnik izmena, povlačenje izjave o licenci.
+
+Izmene u audio procesu uz ovaj korak: stanje sada nosi vreme gašenja/otvaranja, foldere, broj pesama, jezike i izjavu o licenci; skeniranje posle komande ide u pozadini (komanda se odmah vraća); izjava o kolektivnoj licenci daje se iz admin dela (komanda `declare-collective-license`, samo uz PIN).
+
+Odstupanje: ekrani su pisani u C# kodu, ne u XAML-u (bez razvojnog računara greške u XAML-u bi se videle tek pri pokretanju).
+
+Paket za probu: artefakt `LustreRadio` (audio proces + nadzor + interfejs, `POKRENI.cmd`, `ZAUSTAVI.cmd`, `UPUTSTVO.txt`).
