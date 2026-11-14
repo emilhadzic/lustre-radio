@@ -135,3 +135,15 @@ Vlasnik je izjavio da ima potrebna prava i da plaća SOKOJ i OFPS, i tražio da 
 - Ovo menja deo 9 i odluku D10 specifikacije v4.1 u tački „nikad se ne pretpostavlja pokrivenost SOKOJ/OFPS“: sada se pokrivenost prihvata na osnovu izričite izjave vlasnika.
 - Privremeno označavanje „za probu“ je uklonjeno; Proba koristi istu izjavu.
 - Dokaz: GitHub Actions, 14.11.2026., 238 testova prošlo (4 nova za izjavu).
+
+## Proba radija na računaru vlasnika (14.11.2026. 07:33–07:41)
+
+Windows 11, slušalice HyperX (48 kHz), 5 MP3 pesama, verzija sa izjavom o kolektivnoj licenci.
+
+- Skeniranje 5 pesama: 2 s. Izjava data → 5 pesama potvrđeno. Emitovanje krenulo samo.
+- Program „Subota - jutro“ u 07:34 (subota): raspored je izabrao ispravan slot.
+- Pesme su se smenjivale na 07:36:16, 07:38:15, 07:40:16 (cele pesme, prelaz 6 s).
+- Taster N u 07:41:13: sledeća pesma je krenula iste sekunde.
+- **Nije probano:** nastavak iste pesme posle ponovnog pokretanja (u dnevniku je samo jedno pokretanje); izvlačenje slušalica.
+- **Nađena greška:** pesme su išle abecednim redom. Uzrok: pesme bez žanra u oznakama su na nivou „bilo koja“, a tamo izbor nije bio nasumičan. Ispravljeno 14.11. (dva nova testa; GitHub Actions, 241 test prošao). Ispravka još nije potvrđena slušanjem.
+- Dodato: kad fajl nema žanr u oznakama, žanr je naziv podfoldera (npr. `muzika\Deep House\...`).
