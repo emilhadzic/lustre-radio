@@ -27,6 +27,7 @@ public sealed class IpcServer : IDisposable
     private readonly Queue<string> _recentOrder = new();
     private long _seq;
     private Task? _acceptLoop;
+    private int _disposed;
 
     public IpcServer(string pipeName, IIpcHandler handler, Action<string>? log = null)
     {
@@ -70,6 +71,11 @@ public sealed class IpcServer : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0)
+        {
+            return;
+        }
+
         _stop.Cancel();
         Client[] clients;
         lock (_clientsLock)

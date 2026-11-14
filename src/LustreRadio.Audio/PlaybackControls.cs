@@ -6,9 +6,11 @@ namespace LustreRadio.Audio;
 /// </summary>
 public sealed class PauseGate(IFrameProvider inner, double fadeSeconds = 0.25) : IFrameProvider
 {
-    private readonly float _step = 1f / Math.Max(1, inner.Format.FramesFromSeconds(fadeSeconds));
+    private readonly int _fadeFrames = (int)Math.Max(1, inner.Format.FramesFromSeconds(fadeSeconds));
     private volatile bool _paused;
-    private float _level = 1f;
+
+    // 0 = puna jacina, _fadeFrames = tisina. Ceo broj, da kraj stisavanja bude tacan u uzorak.
+    private int _fadePos;
 
     public AudioFormat Format => inner.Format;
 
@@ -21,7 +23,7 @@ public sealed class PauseGate(IFrameProvider inner, double fadeSeconds = 0.25) :
     public int Read(Span<float> buffer)
     {
         var frames = buffer.Length / 2;
-        if (_paused && _level <= 0f)
+        if (_paused && _fadePos >= _fadeFrames)
         {
             buffer[..(frames * 2)].Clear();
             return frames;
@@ -30,20 +32,20 @@ public sealed class PauseGate(IFrameProvider inner, double fadeSeconds = 0.25) :
         var read = inner.Read(buffer);
         for (var i = 0; i < read; i++)
         {
-            var target = _paused ? 0f : 1f;
-            if (_level < target)
+            if (_paused)
             {
-                _level = Math.Min(1f, _level + _step);
+                _fadePos = Math.Min(_fadeFrames, _fadePos + 1);
             }
-            else if (_level > target)
+            else if (_fadePos > 0)
             {
-                _level = Math.Max(0f, _level - _step);
+                _fadePos--;
             }
 
-            if (_level < 1f)
+            if (_fadePos > 0)
             {
-                buffer[i * 2] *= _level;
-                buffer[(i * 2) + 1] *= _level;
+                var level = 1f - ((float)_fadePos / _fadeFrames);
+                buffer[i * 2] *= level;
+                buffer[(i * 2) + 1] *= level;
             }
         }
 
