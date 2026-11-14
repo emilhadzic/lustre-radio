@@ -38,11 +38,29 @@ jobs:
           & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
           & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe"; if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
           & "src\LustreRadio.Proba\$tfm\LustreRadio.Proba.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Proba' }
+      - name: Ekrani (slike i provera velicine kontrola)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $p = Start-Process "src\LustreRadio.UI\bin\Release\net10.0-windows\LustreRadio.UI.exe" -ArgumentList '--snapshot', "$PWD\snapshots" -PassThru -RedirectStandardError snapshot-err.txt
+          if (-not $p.WaitForExit(120000)) { $p.Kill(); throw 'snapshot nije zavrsio' }
+          Get-Content snapshot-err.txt
+          Get-ChildItem "$env:ProgramData\LustreRadio\logs\ui-*.log" | ForEach-Object { Get-Content $_.FullName -Tail 30 }
+          if ($p.ExitCode -ne 0) { throw "Provera ekrana: izlazni kod $($p.ExitCode)" }
+          Get-ChildItem snapshots\*-1366x768.jpg, snapshots\01-*-1024x600.jpg, snapshots\08-*-1024x600.jpg | ForEach-Object {
+            $b = [Convert]::ToBase64String([IO.File]::ReadAllBytes($_.FullName))
+            for ($i = 0; $i -lt $b.Length; $i += 4000) { Write-Host ("IMG|{0}|{1}" -f $_.BaseName, $b.Substring($i, [Math]::Min(4000, $b.Length - $i))) }
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LustreRadio-Ekrani
+          path: snapshots/*.png
+          retention-days: 30
       - name: Paket (svi programi u jednom folderu)
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          foreach ($p in 'Engine', 'Watchdog') {
+          foreach ($p in 'Engine', 'Watchdog', 'UI') {
             dotnet publish "src/LustreRadio.$p/LustreRadio.$p.csproj" -c Release -r win-x64 --self-contained true -o publish/LustreRadio
             if ($LASTEXITCODE -ne 0) { throw "publish $p" }
           }

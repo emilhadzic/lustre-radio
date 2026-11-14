@@ -23,6 +23,9 @@ public interface IRadioControl
     void Rescan();
 
     void SetMusicFolders(IReadOnlyList<string> folders);
+
+    /// <summary>Podesavanje je promenjeno; posalji novo stanje svim interfejsima.</summary>
+    void StateChanged();
 }
 
 /// <summary>
@@ -35,7 +38,10 @@ public sealed class RadioCommandHandler : IIpcHandler
     public const string VolumeMinKey = "volume-min";
     public const string VolumeMaxKey = "volume-max";
 
-    private static readonly HashSet<string> AdminCommands = ["rescan", "set-music-folders", "set-volume-range", "logout"];
+    public const string StaffLanguageKey = "language-staff";
+    public const string AdminLanguageKey = "language-admin";
+
+    private static readonly HashSet<string> AdminCommands = ["rescan", "set-music-folders", "set-volume-range", "logout", "set-language", "touch", "declare-collective-license"];
 
     private readonly IRadioControl _radio;
     private readonly LustreDatabase _db;
@@ -119,6 +125,39 @@ public sealed class RadioCommandHandler : IIpcHandler
                 _sessions.Logout(command.Session);
                 return IpcMessage.Success(command.Id);
 
+            case "touch":
+                // produzava admin sesiju dok admin nesto radi na ekranu (Validate iznad je vec to uradio)
+                return IpcMessage.Success(command.Id);
+
+            case "declare-collective-license":
+                // Izjava vlasnika da placa naknadu organizacijama (odluka od 14.11.2026.). Belezi se ko i kada.
+                if (!args.TryGetValue("organizations", out var organizations) || string.IsNullOrWhiteSpace(organizations) || organizations.Length > 200)
+                {
+                    return IpcMessage.Failure(command.Id, "bad-argument");
+                }
+
+                _db.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, new Core.Licensing.CollectiveLicense
+                {
+                    Organizations = organizations.Trim(),
+                    DeclaredBy = "admin (PIN)",
+                    DeclaredAt = DateTimeOffset.Now,
+                    Note = "Izjava data u podesavanjima programa.",
+                });
+                _radio.Rescan();
+                return IpcMessage.Success(command.Id);
+
+            case "set-language":
+                args.TryGetValue("screen", out var screen);
+                args.TryGetValue("lang", out var lang);
+                if (screen is not ("staff" or "admin") || lang is not ("sr" or "en"))
+                {
+                    return IpcMessage.Failure(command.Id, "bad-argument");
+                }
+
+                _db.Settings.Set(screen == "staff" ? StaffLanguageKey : AdminLanguageKey, lang);
+                _radio.StateChanged();
+                return IpcMessage.Success(command.Id);
+
             case "rescan":
                 _radio.Rescan();
                 return IpcMessage.Success(command.Id);
@@ -129,6 +168,12 @@ public sealed class RadioCommandHandler : IIpcHandler
                     .Select(a => a.Value)
                     .Where(v => !string.IsNullOrWhiteSpace(v))
                     .ToList();
+                var missing = folders.FirstOrDefault(f => !Path.IsPathFullyQualified(f) || !Directory.Exists(f));
+                if (missing is not null)
+                {
+                    return IpcMessage.Failure(command.Id, "folder-not-found", new() { ["folder"] = missing });
+                }
+
                 _radio.SetMusicFolders(folders);
                 return IpcMessage.Success(command.Id);
 
@@ -144,6 +189,7 @@ public sealed class RadioCommandHandler : IIpcHandler
                 _db.Settings.Set(VolumeMinKey, newMin.ToString("R", CultureInfo.InvariantCulture));
                 _db.Settings.Set(VolumeMaxKey, newMax.ToString("R", CultureInfo.InvariantCulture));
                 _radio.SetVolume(Math.Clamp(_radio.GetState().Volume, newMin, newMax));
+                _radio.StateChanged();
                 return IpcMessage.Success(command.Id);
 
             default:
@@ -167,8 +213,11 @@ public sealed class RadioCommandHandler : IIpcHandler
 
         _db.Settings.Set(PinKey, PinVault.Hash(pin));
         _sessions.InvalidateAll();
+        _radio.StateChanged();
         return IpcMessage.Success(command.Id);
     }
+
+    public static string Language(LustreDatabase db, string key) => db.Settings.Get(key) == "en" ? "en" : "sr";
 
     private static double Parse(string? text, double fallback) =>
         double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var value) && value is >= 0 and <= 1 ? value : fallback;

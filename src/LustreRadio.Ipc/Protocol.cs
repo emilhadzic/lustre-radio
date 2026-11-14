@@ -54,6 +54,36 @@ public sealed record RadioState
 
     /// <summary>Radi u sigurnom rezimu (posle vise padova).</summary>
     public bool SafeMode { get; init; }
+
+    /// <summary>Kada se danas zatvara (lokalno vreme), dok radi.</summary>
+    public DateTime? ClosesAtLocal { get; init; }
+
+    /// <summary>Kada se sledeci put otvara (lokalno vreme), dok ne radi.</summary>
+    public DateTime? OpensAtLocal { get; init; }
+
+    /// <summary>Lokalno vreme audio procesa u trenutku slanja.</summary>
+    public DateTime NowLocal { get; init; }
+
+    public List<string> MusicFolders { get; init; } = [];
+
+    /// <summary>Ukupno pesama u biblioteci (i onih koje ne smeju u eter).</summary>
+    public int TotalTracks { get; init; }
+
+    /// <summary>Skeniranje biblioteke je u toku.</summary>
+    public bool Scanning { get; init; }
+
+    /// <summary>Jezik ekrana za zaposlene: sr ili en.</summary>
+    public string StaffLanguage { get; init; } = "sr";
+
+    /// <summary>Jezik admin dela: sr ili en.</summary>
+    public string AdminLanguage { get; init; } = "sr";
+
+    public string? EngineVersion { get; init; }
+
+    /// <summary>Organizacije iz izjave vlasnika o kolektivnoj licenci (npr. "SOKOJ, OFPS"); null ako izjave nema.</summary>
+    public string? LicenseOrganizations { get; init; }
+
+    public DateTime? LicenseDeclaredLocal { get; init; }
 }
 
 /// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>

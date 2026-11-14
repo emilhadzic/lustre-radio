@@ -62,6 +62,9 @@ public sealed class EngineHost : IDisposable, IRadioControl
     private NowPlaying? _nowPlaying;
     private TimeSpan _pausedAt;
     private double _volume;
+    private readonly object _scanLock = new();
+    private bool _scanning;
+    private bool _scanAgain;
 
     public EngineHost(EngineHostOptions options)
     {
@@ -104,23 +107,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
             return;
         }
 
-        var thread = new Thread(() =>
-        {
-            try
-            {
-                _log($"Skeniranje: {Index()}");
-            }
-            catch (Exception ex)
-            {
-                _log("Skeniranje nije uspelo: " + ex.Message);
-            }
-        })
-        {
-            IsBackground = true,
-            Name = "LustreRadio.Index",
-            Priority = ThreadPriority.BelowNormal,
-        };
-        thread.Start();
+        Rescan();
     }
 
     /// <summary>Skenira foldere sa muzikom i uskladjuje bazu.</summary>
@@ -237,11 +224,69 @@ public sealed class EngineHost : IDisposable, IRadioControl
         Publish();
     }
 
+    /// <summary>
+    /// Pokrece skeniranje u pozadini i odmah se vraca: komanda interfejsa ne sme da ceka minute.
+    /// Ako skeniranje vec traje, zapamti da treba jos jedno posle njega (npr. folderi su upravo promenjeni).
+    /// </summary>
     public void Rescan()
     {
-        var summary = Index();
-        _log($"Skeniranje: {summary}");
+        lock (_scanLock)
+        {
+            if (_scanning)
+            {
+                _scanAgain = true;
+                return;
+            }
+
+            _scanning = true;
+        }
+
         Publish();
+        var thread = new Thread(() =>
+        {
+            while (true)
+            {
+                try
+                {
+                    _log($"Skeniranje: {Index()}");
+                }
+                catch (Exception ex)
+                {
+                    _log("Skeniranje nije uspelo: " + ex.Message);
+                }
+
+                lock (_scanLock)
+                {
+                    if (_scanAgain)
+                    {
+                        _scanAgain = false;
+                        continue;
+                    }
+
+                    _scanning = false;
+                    break;
+                }
+            }
+
+            Publish();
+        })
+        {
+            IsBackground = true,
+            Name = "LustreRadio.Index",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        thread.Start();
+    }
+
+    public bool IsScanning
+    {
+        get
+        {
+            lock (_scanLock)
+            {
+                return _scanning;
+            }
+        }
     }
 
     public void SetMusicFolders(IReadOnlyList<string> folders)
@@ -250,12 +295,16 @@ public sealed class EngineHost : IDisposable, IRadioControl
         Rescan();
     }
 
+    public void StateChanged() => Publish();
+
     public RadioState GetState()
     {
         lock (_sessionLock)
         {
             var (min, max) = RadioCommandHandler.VolumeRange(Database);
             var playing = _session is not null ? _nowPlaying : null;
+            var decision = _director?.CurrentDecision();
+            var license = Database.Settings.GetJson<Core.Licensing.CollectiveLicense>(LibraryIndexer.CollectiveLicenseKey);
             var position = 0.0;
             var trackId = playing?.TrackId;
             if (_session is not null && _session.TryGetPosition(out var id, out var seconds) && id == trackId)
@@ -285,6 +334,17 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 FramesRendered = _session?.Sequencer.OutputFrames ?? 0,
                 ProcessId = Environment.ProcessId,
                 SafeMode = _options.SafeMode,
+                ClosesAtLocal = decision is { ShouldPlay: true } ? decision.ClosesAtLocal : null,
+                OpensAtLocal = decision is { ShouldPlay: false } ? decision.NextChangeLocal : null,
+                NowLocal = DateTime.Now,
+                MusicFolders = MusicFolders.ToList(),
+                TotalTracks = _director?.TotalCount ?? 0,
+                Scanning = IsScanning,
+                StaffLanguage = RadioCommandHandler.Language(Database, RadioCommandHandler.StaffLanguageKey),
+                AdminLanguage = RadioCommandHandler.Language(Database, RadioCommandHandler.AdminLanguageKey),
+                EngineVersion = typeof(EngineHost).Assembly.GetName().Version?.ToString(3),
+                LicenseOrganizations = license?.Organizations,
+                LicenseDeclaredLocal = license?.DeclaredAt.LocalDateTime,
             };
         }
     }

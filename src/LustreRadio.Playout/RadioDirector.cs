@@ -148,6 +148,26 @@ public sealed class RadioDirector
         }
     }
 
+    /// <summary>Odluka rasporeda za ovaj trenutak (za prikaz: kada se zatvara, kada se otvara).</summary>
+    public ScheduleDecision CurrentDecision()
+    {
+        lock (_sync)
+        {
+            return ScheduleEngine.Evaluate(_schedule, _override, _clock.NowLocal);
+        }
+    }
+
+    public int TotalCount
+    {
+        get
+        {
+            lock (_sync)
+            {
+                return _catalog.Count;
+            }
+        }
+    }
+
     /// <summary>Da li radio u ovom trenutku treba da svira. Jeftino: racuna raspored samo kad se nesto menja.</summary>
     public bool ShouldPlayNow()
     {

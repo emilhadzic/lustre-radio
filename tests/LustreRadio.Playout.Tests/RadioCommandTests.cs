@@ -48,6 +48,58 @@ public sealed class RadioCommandTests : IDisposable
     }
 
     [Fact]
+    public void Language_IsSetPerScreen_AndOnlyKnownValuesAreAccepted()
+    {
+        var session = LoginAsAdmin();
+        Assert.Equal("sr", RadioCommandHandler.Language(_db, RadioCommandHandler.StaffLanguageKey));
+
+        Assert.True(Send("set-language", new() { ["screen"] = "staff", ["lang"] = "en" }, session).Ok);
+        Assert.Equal("en", RadioCommandHandler.Language(_db, RadioCommandHandler.StaffLanguageKey));
+        Assert.Equal("sr", RadioCommandHandler.Language(_db, RadioCommandHandler.AdminLanguageKey));
+
+        Assert.Equal("bad-argument", Send("set-language", new() { ["screen"] = "staff", ["lang"] = "de" }, session).Error);
+        Assert.Equal("bad-argument", Send("set-language", new() { ["screen"] = "kasa", ["lang"] = "en" }, session).Error);
+        Assert.Equal("en", RadioCommandHandler.Language(_db, RadioCommandHandler.StaffLanguageKey));
+    }
+
+    [Fact]
+    public void CollectiveLicense_IsRecordedOnlyForAdmin_WithWhoAndWhen()
+    {
+        var args = new Dictionary<string, string> { ["organizations"] = "SOKOJ, OFPS" };
+        Assert.Equal("admin-required", Send("declare-collective-license", args).Error);
+        Assert.Null(_db.Settings.GetJson<LustreRadio.Core.Licensing.CollectiveLicense>(LibraryIndexer.CollectiveLicenseKey));
+
+        var session = LoginAsAdmin();
+        _radio.Calls.Clear();
+        Assert.Equal("bad-argument", Send("declare-collective-license", new() { ["organizations"] = " " }, session).Error);
+        Assert.True(Send("declare-collective-license", args, session).Ok);
+
+        var saved = _db.Settings.GetJson<LustreRadio.Core.Licensing.CollectiveLicense>(LibraryIndexer.CollectiveLicenseKey)!;
+        Assert.Equal("SOKOJ, OFPS", saved.Organizations);
+        Assert.Equal("admin (PIN)", saved.DeclaredBy);
+        Assert.True((DateTimeOffset.Now - saved.DeclaredAt).Duration() < TimeSpan.FromMinutes(1));
+        Assert.Equal(["rescan"], _radio.Calls); // pesme se odmah ponovo proveravaju
+    }
+
+    [Fact]
+    public void MusicFolders_MustExist_OtherwiseNothingChanges()
+    {
+        var session = LoginAsAdmin();
+        _radio.Calls.Clear();
+        var real = Path.GetTempPath();
+        var missing = Path.Combine(real, "nema-" + Guid.NewGuid().ToString("N"));
+
+        var refused = Send("set-music-folders", new() { ["folder0"] = real, ["folder1"] = missing }, session);
+        Assert.Equal("folder-not-found", refused.Error);
+        Assert.Equal(missing, refused.Data!["folder"]);
+        Assert.Equal("folder-not-found", Send("set-music-folders", new() { ["folder0"] = "muzika" }, session).Error);
+        Assert.Empty(_radio.Calls);
+
+        Assert.True(Send("set-music-folders", new() { ["folder0"] = real }, session).Ok);
+        Assert.Equal(["folders:" + real], _radio.Calls);
+    }
+
+    [Fact]
     public void StaffCommands_WorkWithoutPin()
     {
         Assert.True(Send("pause").Ok);
@@ -61,6 +113,8 @@ public sealed class RadioCommandTests : IDisposable
     [InlineData("rescan")]
     [InlineData("set-music-folders")]
     [InlineData("set-volume-range")]
+    [InlineData("set-language")]
+    [InlineData("touch")]
     public void AdminCommands_AreRefusedWithoutValidSession(string command)
     {
         var args = new Dictionary<string, string> { ["folder0"] = @"D:\Muzika", ["min"] = "0", ["max"] = "1" };
@@ -196,6 +250,8 @@ public sealed class RadioCommandTests : IDisposable
         }
 
         public void Rescan() => Calls.Add("rescan");
+
+        public void StateChanged() => Calls.Add("state-changed");
 
         public void SetMusicFolders(IReadOnlyList<string> folders) => Calls.Add("folders:" + string.Join(";", folders));
     }
