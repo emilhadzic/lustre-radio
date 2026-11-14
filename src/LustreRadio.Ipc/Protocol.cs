@@ -45,6 +45,15 @@ public sealed record RadioState
     public bool PinIsSet { get; init; }
 
     public DateTime AsOfUtc { get; init; }
+
+    /// <summary>Brojac pripremljenog zvuka u tekucem emitovanju (za nadzor: dok svira, mora da raste).</summary>
+    public long FramesRendered { get; init; }
+
+    /// <summary>ID procesa audio procesa.</summary>
+    public int ProcessId { get; init; }
+
+    /// <summary>Radi u sigurnom rezimu (posle vise padova).</summary>
+    public bool SafeMode { get; init; }
 }
 
 /// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>

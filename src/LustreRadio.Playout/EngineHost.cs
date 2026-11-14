@@ -28,6 +28,9 @@ public sealed record EngineHostOptions
 
     /// <summary>Pauza se sama prekida posle ovog vremena (spec. deo 12: 15 minuta).</summary>
     public TimeSpan PauseAutoResume { get; init; } = TimeSpan.FromMinutes(15);
+
+    /// <summary>Sigurni rezim (posle vise padova): bez skeniranja biblioteke.</summary>
+    public bool SafeMode { get; init; }
 }
 
 /// <summary>
@@ -88,6 +91,37 @@ public sealed class EngineHost : IDisposable, IRadioControl
 
     public IReadOnlyList<string> MusicFolders =>
         _options.MusicFolders ?? Database.Settings.GetJson<List<string>>(MusicFoldersKey) ?? [];
+
+    /// <summary>
+    /// Skenira biblioteku u pozadini, da pokretanje programa ne ceka (veliko skeniranje traje minutima,
+    /// a nadzor bi program koji ne odgovara smatrao zamrznutim). U sigurnom rezimu se ne skenira.
+    /// </summary>
+    public void IndexInBackground()
+    {
+        if (_options.SafeMode)
+        {
+            _log("Sigurni rezim: skeniranje biblioteke je preskoceno.");
+            return;
+        }
+
+        var thread = new Thread(() =>
+        {
+            try
+            {
+                _log($"Skeniranje: {Index()}");
+            }
+            catch (Exception ex)
+            {
+                _log("Skeniranje nije uspelo: " + ex.Message);
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "LustreRadio.Index",
+            Priority = ThreadPriority.BelowNormal,
+        };
+        thread.Start();
+    }
 
     /// <summary>Skenira foldere sa muzikom i uskladjuje bazu.</summary>
     public IndexSummary Index()
@@ -248,6 +282,9 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 BroadcastableTracks = BroadcastableCount,
                 PinIsSet = !string.IsNullOrEmpty(Database.Settings.Get(RadioCommandHandler.PinKey)),
                 AsOfUtc = DateTime.UtcNow,
+                FramesRendered = _session?.Sequencer.OutputFrames ?? 0,
+                ProcessId = Environment.ProcessId,
+                SafeMode = _options.SafeMode,
             };
         }
     }

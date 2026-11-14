@@ -71,6 +71,9 @@ public sealed class RadioCommandHandler : IIpcHandler
         switch (name)
         {
             case "get-state":
+                // Namerno pita radio za stanje: ako je glavna petlja zaglavljena, odgovor nece stici
+                // i nadzor ce to videti kao zamrznut proces.
+                _ = _radio.GetState();
                 return IpcMessage.Success(command.Id);
 
             case "pause":

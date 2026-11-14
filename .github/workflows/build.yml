@@ -24,7 +24,6 @@ jobs:
           $tfm = 'bin\Release\net10.0-windows'
           $runs = @(
             @{ exe = "src\LustreRadio.Engine\$tfm\LustreRadio.Engine.exe"; args = @('--smoke'); log = 'engine' },
-            @{ exe = "src\LustreRadio.Watchdog\$tfm\LustreRadio.Watchdog.exe"; args = @(); log = 'watchdog' },
             @{ exe = "src\LustreRadio.UI\$tfm\LustreRadio.UI.exe"; args = @('--smoke'); log = 'ui' }
           )
           foreach ($r in $runs) {
@@ -39,6 +38,18 @@ jobs:
           & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
           & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe"; if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
           & "src\LustreRadio.Proba\$tfm\LustreRadio.Proba.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Proba' }
+      - name: Paket (svi programi u jednom folderu)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($p in 'Engine', 'Watchdog') {
+            dotnet publish "src/LustreRadio.$p/LustreRadio.$p.csproj" -c Release -r win-x64 --self-contained true -o publish/LustreRadio
+            if ($LASTEXITCODE -ne 0) { throw "publish $p" }
+          }
+      - name: Nadzor (integracioni test sa pravim procesima)
+        shell: pwsh
+        timeout-minutes: 8
+        run: ./tests/integration/nadzor.ps1 -Bin (Resolve-Path publish/LustreRadio)
       - name: Paket za preuzimanje (Bench)
         run: dotnet publish src/LustreRadio.Bench/LustreRadio.Bench.csproj -c Release -r win-x64 --self-contained true -o publish/LustreRadio-Bench
       - uses: actions/upload-artifact@v4
