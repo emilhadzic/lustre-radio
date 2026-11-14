@@ -135,6 +135,7 @@ public sealed class StaffViewTests
         Assert.False(view.CanNext);
         Assert.Equal("Povezivanje…", view.StatusLine);
         Assert.Equal("1:00", view.PositionText); // traka stoji dok nema veze
+        Assert.Equal(string.Empty, view.ClosesLine); // bez veze se ne tvrdi nista o vremenu gasenja
     }
 
     [Fact]

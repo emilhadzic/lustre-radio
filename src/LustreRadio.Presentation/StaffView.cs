@@ -91,7 +91,7 @@ public sealed record StaffView
             StatusLine = status,
             Health = health,
             ProgramLine = playing ? ProgramText(state!, language) : string.Empty,
-            ClosesLine = state is { OnAir: true, ClosesAtLocal: { } closes } ? ClosesText(closes, state.NowLocal, language) : string.Empty,
+            ClosesLine = live && state is { OnAir: true, ClosesAtLocal: { } closes } ? ClosesText(closes, state.NowLocal, language) : string.Empty,
             Progress = duration > 0 ? position / duration : 0,
             PositionText = playing ? Clock(position) : string.Empty,
             DurationText = playing && duration > 0 ? Clock(duration) : string.Empty,

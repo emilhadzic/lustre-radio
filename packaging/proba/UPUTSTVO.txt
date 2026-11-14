@@ -1,0 +1,20 @@
+LUSTRE RADIO - proba na vasem racunaru (nije instalacija)
+
+1. Raspakujte ceo folder (ne pokrecite iz ZIP-a).
+2. Dvoklik na POKRENI.cmd. Otvara se prozor LUSTRE RADIO.
+   Ako Windows pita "Windows protected your PC": More info -> Run anyway.
+3. Dole desno: Admin. Prvi put postavite PIN (4 do 8 cifara, unosi se dvaput).
+4. Muzika -> Dodaj folder -> izaberite folder sa pesmama.
+5. Licenca -> "Izjavljujem da placam SOKOJ i OFPS".
+6. Zakljucaj. Muzika krece sama (izmedju 07:00 i 23:30).
+
+Gasenje: dvoklik na ZAUSTAVI.cmd. (Ako samo zatvorite prozor, muzika nastavlja da svira - tako i treba.)
+
+Sta da probate i javite:
+- Pauza / Pusti, Sledeca, glasnoca.
+- Zatvorite prozor dok svira, pa ga ponovo otvorite (POKRENI.cmd): muzika ne sme da stane.
+- Task Manager -> LustreRadio.Engine -> End task: muzika treba da se vrati za nekoliko sekundi.
+- Admin -> Jezik -> English, pa nazad.
+- Admin -> Provera sistema. ("Automatsko pokretanje" ce biti zuto - to stize sa instalacijom.)
+
+Dnevnici (ako nesto ne radi, posaljite ih): C:\ProgramData\LustreRadio\logs

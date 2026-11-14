@@ -68,6 +68,14 @@ jobs:
         shell: pwsh
         timeout-minutes: 8
         run: ./tests/integration/nadzor.ps1 -Bin (Resolve-Path publish/LustreRadio)
+      - name: Paket za preuzimanje (radio sa interfejsom, proba)
+        shell: pwsh
+        run: Copy-Item packaging/proba/* publish/LustreRadio/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LustreRadio
+          path: publish/LustreRadio
+          retention-days: 30
       - name: Paket za preuzimanje (Bench)
         run: dotnet publish src/LustreRadio.Bench/LustreRadio.Bench.csproj -c Release -r win-x64 --self-contained true -o publish/LustreRadio-Bench
       - uses: actions/upload-artifact@v4
