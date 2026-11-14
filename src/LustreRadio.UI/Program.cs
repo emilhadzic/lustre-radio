@@ -38,7 +38,7 @@ public static class Program
             }
 
             var smoke = args.Contains("--smoke");
-            using var instance = smoke ? null : SingleInstance.TryAcquire(InstanceNames.UI);
+            using var instance = smoke ? null : SingleInstance.TryAcquire(InstanceNames.Ui);
             if (!smoke && instance is null)
             {
                 BringExistingToFront();

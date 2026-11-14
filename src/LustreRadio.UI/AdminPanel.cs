@@ -103,7 +103,7 @@ internal sealed class AdminPanel : Grid
 
     public AdminSection Section { get; private set; } = AdminSection.Library;
 
-    private string Language => Texts.Normalize(_state?.AdminLanguage);
+    private string Lang => Texts.Normalize(_state?.AdminLanguage);
 
     public void Open(AdminSection section)
     {
@@ -123,7 +123,7 @@ internal sealed class AdminPanel : Grid
     {
         _state = state;
         _link = link;
-        var language = Language;
+        var language = Lang;
         _heading.Text = Texts.Get(language, T.AdminTitle);
         Theme.SetText(_lockButton, Texts.Get(language, T.Lock));
         Theme.SetText(_nav[AdminSection.Library], Texts.Get(language, T.SectionLibrary));
@@ -178,7 +178,7 @@ internal sealed class AdminPanel : Grid
     private string Signature(RadioState? s, LinkStatus link) => string.Join(
         '|',
         Section,
-        Language,
+        Lang,
         link,
         s?.StaffLanguage,
         string.Join(';', s?.MusicFolders ?? []),
@@ -193,7 +193,7 @@ internal sealed class AdminPanel : Grid
 
     private void BuildLibrary(RadioState? state)
     {
-        var language = Language;
+        var language = Lang;
         Title(T.MusicFolders);
         var folders = state?.MusicFolders ?? [];
         if (folders.Count == 0)
@@ -258,7 +258,7 @@ internal sealed class AdminPanel : Grid
 
     private void BuildLicense(RadioState? state)
     {
-        var language = Language;
+        var language = Lang;
         Title(T.SectionLicense);
         var explain = Theme.Label(Texts.Get(language, T.LicenseExplain), 18, Theme.Muted);
         explain.TextWrapping = TextWrapping.Wrap;
@@ -284,7 +284,7 @@ internal sealed class AdminPanel : Grid
 
     private void BuildVolume(RadioState? state)
     {
-        var language = Language;
+        var language = Lang;
         Title(T.SectionVolume);
         var help = Theme.Label(Texts.Get(language, T.VolumeRangeHelp), 18, Theme.Muted);
         help.TextWrapping = TextWrapping.Wrap;
@@ -319,7 +319,7 @@ internal sealed class AdminPanel : Grid
             return;
         }
 
-        var language = Language;
+        var language = Lang;
         _minLabel.Text = Texts.Get(language, T.VolumeMin) + "  " + Percent(_minBar.Value);
         _maxLabel.Text = Texts.Get(language, T.VolumeMax) + "  " + Percent(_maxBar.Value);
     }
@@ -343,7 +343,7 @@ internal sealed class AdminPanel : Grid
 
     private void LanguageRow(T label, string screen, string current)
     {
-        var language = Language;
+        var language = Lang;
         var name = Theme.Label(Texts.Get(language, label), 18);
         name.Margin = new Thickness(0, Theme.Gap, 0, Theme.Gap / 2);
         _content.Children.Add(name);
@@ -361,7 +361,7 @@ internal sealed class AdminPanel : Grid
 
     private void BuildSystem(RadioState? state, LinkStatus link)
     {
-        var language = Language;
+        var language = Lang;
         Title(T.SectionSystem);
         foreach (var line in SystemCheck.Evaluate(state, link, _probes, language))
         {
@@ -415,7 +415,7 @@ internal sealed class AdminPanel : Grid
 
     private async void Send(string name, Dictionary<string, string>? args = null)
     {
-        var language = Language;
+        var language = Lang;
         IpcMessage? response;
         try
         {
@@ -449,7 +449,7 @@ internal sealed class AdminPanel : Grid
 
     private void Title(T key)
     {
-        var title = Theme.Label(Texts.Get(Language, key), 22, Theme.Gold, FontWeights.SemiBold);
+        var title = Theme.Label(Texts.Get(Lang, key), 22, Theme.Gold, FontWeights.SemiBold);
         title.Margin = new Thickness(0, 0, 0, 16);
         _content.Children.Add(title);
     }
