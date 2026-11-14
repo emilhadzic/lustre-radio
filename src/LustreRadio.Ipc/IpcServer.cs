@@ -112,7 +112,9 @@ public sealed class IpcServer : IDisposable
                     PipeDirection.InOut,
                     NamedPipeServerStream.MaxAllowedServerInstances,
                     PipeTransmissionMode.Byte,
-                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly);
+                    PipeOptions.Asynchronous | PipeOptions.CurrentUserOnly,
+                    inBufferSize: 65536,
+                    outBufferSize: 65536);
                 await pipe.WaitForConnectionAsync(_stop.Token).ConfigureAwait(false);
                 var connected = pipe;
                 pipe = null;

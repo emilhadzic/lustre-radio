@@ -109,7 +109,7 @@ public static class Program
 
                 if (engines.Count > 0)
                 {
-                    (client, var state) = Poll(client);
+                    (client, var state) = PollWithLimit(client, log);
                     if (state is not null)
                     {
                         observation = observation with
@@ -184,6 +184,22 @@ public static class Program
                 return false;
             }
         }).ToList();
+
+    /// <summary>
+    /// Provera sa tvrdim rokom: sta god da se desi sa vezom, petlja nadzora ne sme da stane.
+    /// Ako provera ne zavrsi na vreme, veza se napusta i racuna se da audio proces nije odgovorio.
+    /// </summary>
+    private static (IpcClient? Client, RadioState? State) PollWithLimit(IpcClient? client, Logger log)
+    {
+        var poll = Task.Run(() => Poll(client));
+        if (poll.Wait(TimeSpan.FromSeconds(12)))
+        {
+            return poll.Result;
+        }
+
+        log.Warning("Provera audio procesa nije zavrsila za 12 s; veza se napusta.");
+        return (null, null);
+    }
 
     private static (IpcClient? Client, RadioState? State) Poll(IpcClient? client)
     {
