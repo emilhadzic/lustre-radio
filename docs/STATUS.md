@@ -6,7 +6,8 @@
 | M1 Audio jezgro | **zatvorena 13.11.2026. po odluci vlasnika, sa otvorenim stavkama** | Automatski testovi prošli; stvarni zvuk prošao na računaru vlasnika. Otvoreno (prenosi se dalje): ponovno povezivanje na pravom uređaju i Bluetooth (T-BT) nepokrenuti; fiksna sistemska glasnoća; OGG Opus; rezervni FLAC dekoder; ništa nije pokrenuto na mini PC-ju; duža proba nije rađena; režim „slab računar“ preskočen. |
 | M2 Logika | **završena 13.11.2026.** | GitHub Actions: 93 testa logike prošla. Kriterijum iz specifikacije (T-SCH, T-ROT, T-LIC, T-VOI-03) ispunjen na nivou čiste logike; povezivanje sa bazom i engine-om dolazi u M3. |
 | M3 Engine i baza | **završena 14.11.2026. (logika)**, sa otvorenim stavkama | GitHub Actions: 279 testova prošlo. Radio svira po rasporedu iz baze (proba vlasnika 14.11.). Otvoreno: veza sa interfejsom nije probana sa pravim interfejsom (ne postoji do M5); nastavak posle restarta i pauza nisu probani slušanjem; rezervni nivoi 4 i 6 (keširana lista, folder „Rezerva“) dolaze u M11; biranje pesama unapred. |
-| M4–M12 | nije započeto | – |
+| M4 Nadzor i pokretanje | **automatski deo završen 14.11.2026.**; proba na pravom računaru nije rađena | GitHub Actions: 297 testova + integracioni test sa pravim procesima. Otvoreno: pokretanje posle prijave/paljenja računara, odbijanje sesije 0 kod pravog servisa, „zvuk stoji“ sa pravim zvukom, sigurni režim u radu, rad 72 h na mini PC-ju. |
+| M5–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
 
@@ -156,3 +157,30 @@ Napomene uz M3 korak 3:
 - Pauza se sama prekida posle 15 minuta; ako radno vreme istekne tokom pauze, emitovanje se završava.
 - Test pauze je otkrio pravu grešku: zbog zaokruživanja izvor je čitan još jednom posle stišavanja, pa bi muzika pri nastavku bila pomerena za jedan blok. Ispravljeno.
 - Komande za raspored, licence, mikseve i glas dodaju se kad nastanu odgovarajući ekrani.
+
+## M4: nadzor i pokretanje (14.11.2026.)
+
+Dokaz za sve stavke „prošao“: GitHub Actions, Windows Server 2025, 14.11.2026., pokretanje 43588860869; 297 testova + integracioni test `tests/integration/nadzor.ps1` sa pravim procesima (bez zvučnog uređaja).
+
+| Stavka | Stanje |
+|---|---|
+| Pravila nadzora (pad, zamrzavanje, zvuk stoji, sigurni režim posle više padova, namerno zaustavljanje) | prošao (GitHub, jedinični testovi) |
+| Tačno jedan audio proces i jedan nadzor; 10 dvostrukih pokretanja (T-WD-03) | prošao (GitHub, pravi procesi) |
+| Ubijen audio proces se vraća (T-WD-01) | prošao (GitHub): vraćen za 4,6 s |
+| Zamrznut audio proces se otkriva i menja (T-WD-02) | prošao (GitHub): zamenjen za 38 s (granica 30 s bez odgovora + provera na 5 s) |
+| Pad nadzora ne gasi muziku; novi nadzor preuzima postojeći audio proces (T-SES-04) | prošao (GitHub) |
+| Namerno zaustavljanje i ponovno pokretanje (`--stop`, `--start`) (T-SES-05) | prošao (GitHub) |
+| Zadatak u Task Scheduler-u: pravi se, podešavanja se proveravaju, briše se (T-SES-03) | prošao (GitHub) — samo pravljenje i provera podešavanja |
+| Zadatak stvarno pokreće radio posle prijave korisnika / paljenja računara | **nije probano** (traži pravi računar i ponovno pokretanje) |
+| Audio proces odbija rad u sesiji 0 | pravilo: prošao (jedinični test). Na GitHub-u se proces namerno pušta u probnom režimu jer runner nema običnu sesiju; odbijanje pravog servisa **nije probano** |
+| Otkrivanje „zvuk stoji iako treba da svira“ | pravilo: prošao (jedinični test); sa pravim zvukom **nije probano** (runner nema zvučni uređaj) |
+| Sigurni režim (`--safe`: bez skeniranja biblioteke) | napisano; prelazak u režim: prošao (jedinični test); stvarno pokretanje u tom režimu **nepokrenuto** |
+| Rad 72 h, potrošnja memorije i procesora na mini PC-u (T-SOAK) | **nije rađeno** |
+| Pravilo zaštitnog zida za audio proces | ide sa instalacijom (M12) |
+
+Greška koju je našao integracioni test: kad se audio proces zamrzne, stao je i nadzor (slanje poruke je čekalo bez roka). Ispravljeno: rok važi i za slanje, a nadzor ima i tvrdi rok od 12 s za celu proveru. Dodat poseban test (`FrozenPeerTests`).
+
+Ostalo iz ovog koraka:
+- Skeniranje biblioteke sada ide u pozadini, da program odmah odgovara nadzoru.
+- Stanje koje audio proces šalje sadrži brojač zvuka, ID procesa i oznaku sigurnog režima.
+- Probni folder sa podacima: promenljiva `LUSTRE_DATA_ROOT` (koriste je testovi).
