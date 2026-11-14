@@ -57,7 +57,14 @@ try {
 
     Step 'T-WD-02: zamrznut audio proces se otkriva i zamenjuje'
     $t = Get-Date
-    [Native.Nt]::NtSuspendProcess((Get-Process -Id $second).Handle) | Out-Null
+    $victim = Get-Process -Id $second
+    $status = [Native.Nt]::NtSuspendProcess($victim.Handle)
+    if ($status -ne 0) { throw ("NtSuspendProcess nije uspeo: 0x{0:X8}" -f $status) }
+    Start-Sleep 1
+    $victim.Refresh()
+    $waiting = @($victim.Threads | Where-Object { $_.ThreadState -eq 'Wait' -and $_.WaitReason -eq 'Suspended' }).Count
+    Write-Host "   zamrznuto niti: $waiting od $($victim.Threads.Count)"
+    if ($waiting -ne $victim.Threads.Count) { throw 'audio proces nije zaista zamrznut; test ne bi nista dokazao' }
     WaitFor { (Engines).Count -eq 1 -and (Engines)[0].Id -ne $second } 75 'zamena zamrznutog audio procesa'
     Write-Host ("   zamenjen za {0:N1} s" -f ((Get-Date) - $t).TotalSeconds)
 
@@ -88,5 +95,5 @@ finally {
     Get-Process -Name 'LustreRadio.Watchdog', 'LustreRadio.Engine' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     schtasks /Delete /TN 'LustreRadio Watchdog' /F 2>$null | Out-Null
     Write-Host '--- dnevnik nadzora (kraj) ---'
-    Get-ChildItem "$env:ProgramData\LustreRadio\logs\watchdog-*.log" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 40 }
+    Get-ChildItem "$env:ProgramData\LustreRadio\logs\watchdog-*.log" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 60 }
 }
