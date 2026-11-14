@@ -35,7 +35,7 @@ public sealed record PlaybackSnapshot
     public required DateTime SavedUtc { get; init; }
 }
 
-public sealed record NowPlaying(string TrackId, string Title, string Artist, string Program, DayPart? Part, bool Resumed);
+public sealed record NowPlaying(string TrackId, string Title, string Artist, string Program, DayPart? Part, bool Resumed, double DurationSeconds = 0);
 
 /// <summary>
 /// "Mozak" radija: na osnovu sata i rasporeda odlucuje da li se svira i koja pesma je sledeca.
@@ -219,7 +219,7 @@ public sealed class RadioDirector
                     Program = decision.Program.Name,
                     Tier = pick.Tier.ToString(),
                 });
-                TrackStarted?.Invoke(new NowPlaying(pick.Track.Id, record.Title, record.Artist, decision.Program.Name, decision.Part, Resumed: false));
+                TrackStarted?.Invoke(new NowPlaying(pick.Track.Id, record.Title, record.Artist, decision.Program.Name, decision.Part, Resumed: false, record.DurationSeconds));
                 return queued;
             }
 
@@ -263,7 +263,7 @@ public sealed class RadioDirector
             var queued = TryOpen(record, snapshot.PositionSeconds);
             if (queued is not null)
             {
-                TrackStarted?.Invoke(new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true));
+                TrackStarted?.Invoke(new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds));
             }
 
             return queued;

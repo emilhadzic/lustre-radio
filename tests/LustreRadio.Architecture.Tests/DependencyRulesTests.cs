@@ -25,7 +25,7 @@ public class DependencyRulesTests
         ["Voice"] = ["Core"],
         ["Playout"] = ["Core", "Audio", "Analysis", "Data", "Library", "Ipc"],
         ["Engine"] = ["Core", "Audio", "Analysis", "Data", "Library", "Ipc", "Playout"],
-        ["Proba"] = ["Core", "Audio", "Data", "Library", "Playout"],
+        ["Proba"] = ["Core", "Audio", "Data", "Library", "Playout", "Ipc"],
         ["UI"] = ["Core", "Ipc", "Voice", "Data", "Audio"],
         ["Watchdog"] = ["Core", "Ipc"],
         ["Analyzer"] = ["Core", "Audio", "Analysis"],

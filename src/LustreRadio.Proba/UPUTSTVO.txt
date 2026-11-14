@@ -12,6 +12,8 @@ pusta ih sa prelazima i pamti gde je stao. Nema jos pravi interfejs.
    vazi i za pesme koje kasnije dodate u folder.
 4. Muzika krece. Tasteri:
       N = sledeca pesma
+      P = pauza / nastavak (muzika nastavlja odakle je stala)
+      + i - = glasnoca
       Q = kraj
 5. PROBA NASTAVKA: pritisnite Q usred pesme, pa ponovo pokrenite program u roku
    od 10 minuta. Treba da nastavi ISTU pesmu, otprilike odakle je stala.

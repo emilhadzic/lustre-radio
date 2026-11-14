@@ -27,7 +27,12 @@ public static class Program
                 System.Diagnostics.Process.GetCurrentProcess().SessionId,
                 dataRoot);
 
-            using var host = new EngineHost(new EngineHostOptions { DataRoot = dataRoot, Log = message => log.Information("{Message}", message) });
+            using var host = new EngineHost(new EngineHostOptions
+            {
+                DataRoot = dataRoot,
+                Log = message => log.Information("{Message}", message),
+                PipeName = smoke ? null : LustreRadio.Ipc.IpcProtocol.DefaultPipeName,
+            });
             var summary = host.Index();
             log.Information("Biblioteka: {Summary}", summary);
 

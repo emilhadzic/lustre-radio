@@ -9,6 +9,7 @@
     <ProjectReference Include="..\LustreRadio.Data\LustreRadio.Data.csproj" />
     <ProjectReference Include="..\LustreRadio.Library\LustreRadio.Library.csproj" />
     <ProjectReference Include="..\LustreRadio.Playout\LustreRadio.Playout.csproj" />
+    <ProjectReference Include="..\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="UPUTSTVO.txt" CopyToOutputDirectory="PreserveNewest" />

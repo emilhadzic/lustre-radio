@@ -37,7 +37,7 @@ public static class Program
             return 0;
         }
 
-        using var host = new EngineHost(new EngineHostOptions { DataRoot = data, MusicFolders = [music], AlwaysOpen = true, Log = Say });
+        using var host = new EngineHost(new EngineHostOptions { DataRoot = data, MusicFolders = [music], AlwaysOpen = true, Log = Say, PipeName = "LustreRadio.Proba.v1" });
 
         Say("Skeniram folder 'muzika' (prvi put traje duze)...");
         var summary = host.Index();
@@ -101,7 +101,7 @@ public static class Program
             return 0;
         }
 
-        Say("Tasteri: N = sledeca pesma, Q = kraj.");
+        Say("Tasteri: N = sledeca pesma, P = pauza/nastavak, + i - = glasnoca, Q = kraj.");
         while (true)
         {
             var key = Console.ReadKey(intercept: true).Key;
@@ -109,6 +109,24 @@ public static class Program
             {
                 Say("(sledeca pesma)");
                 host.Skip();
+            }
+            else if (key == ConsoleKey.P)
+            {
+                if (host.GetState().Paused)
+                {
+                    host.Resume();
+                }
+                else
+                {
+                    host.Pause();
+                }
+            }
+            else if (key is ConsoleKey.Add or ConsoleKey.OemPlus or ConsoleKey.Subtract or ConsoleKey.OemMinus)
+            {
+                var state = host.GetState();
+                var step = key is ConsoleKey.Add or ConsoleKey.OemPlus ? 0.1 : -0.1;
+                host.SetVolume(Math.Clamp(state.Volume + step, state.VolumeMin, state.VolumeMax));
+                Say($"Glasnoca: {host.GetState().Volume:P0}");
             }
             else if (key == ConsoleKey.Q)
             {

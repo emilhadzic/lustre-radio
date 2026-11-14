@@ -119,16 +119,28 @@ public sealed class RadioSession
             }
         }
 
-        if (saveSnapshot && !_fader.Ended && _sequencer.TryGetLatestEvent(out var id, out var startFrame))
+        if (saveSnapshot && !_fader.Ended && TryGetPosition(out var id, out var position))
         {
-            var position = (_sequencer.OutputFrames - startFrame) / (double)_format.SampleRate;
-            if (id == _resumedId && startFrame == 0)
-            {
-                position += _resumeOffsetSeconds;
-            }
-
-            _director.SaveSnapshot(id, Math.Max(0, position));
+            _director.SaveSnapshot(id, position);
         }
+    }
+
+    /// <summary>Koja pesma je poslednja krenula i dokle je stigla (u sekundama pesme).</summary>
+    public bool TryGetPosition(out string trackId, out double positionSeconds)
+    {
+        if (!_sequencer.TryGetLatestEvent(out trackId, out var startFrame))
+        {
+            positionSeconds = 0;
+            return false;
+        }
+
+        positionSeconds = Math.Max(0, (_sequencer.OutputFrames - startFrame) / (double)_format.SampleRate);
+        if (trackId == _resumedId && startFrame == 0)
+        {
+            positionSeconds += _resumeOffsetSeconds;
+        }
+
+        return true;
     }
 
     private QueuedTrack? Next()

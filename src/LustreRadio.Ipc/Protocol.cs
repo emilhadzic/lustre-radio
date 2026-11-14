@@ -1,0 +1,180 @@
+using System.Buffers.Binary;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
+namespace LustreRadio.Ipc;
+
+/// <summary>Stanje radija koje interfejs prikazuje. Audio proces je jedini izvor istine.</summary>
+public sealed record RadioState
+{
+    /// <summary>Emitovanje je u toku (unutar radnog vremena i ima muzike).</summary>
+    public bool OnAir { get; init; }
+
+    public bool Paused { get; init; }
+
+    public string? TrackId { get; init; }
+
+    public string? Title { get; init; }
+
+    public string? Artist { get; init; }
+
+    public double PositionSeconds { get; init; }
+
+    public double DurationSeconds { get; init; }
+
+    public string? Program { get; init; }
+
+    public string? DayPart { get; init; }
+
+    /// <summary>Glasnoca koju vidi zaposleni, 0-1.</summary>
+    public double Volume { get; init; }
+
+    public double VolumeMin { get; init; }
+
+    public double VolumeMax { get; init; }
+
+    /// <summary>Stanje zvucnog izlaza: Starting, Playing, Disconnected, Finished.</summary>
+    public string? Output { get; init; }
+
+    public string? Device { get; init; }
+
+    /// <summary>Koliko pesama trenutno sme u eter.</summary>
+    public int BroadcastableTracks { get; init; }
+
+    /// <summary>PIN je postavljen (inace interfejs prvo trazi postavljanje).</summary>
+    public bool PinIsSet { get; init; }
+
+    public DateTime AsOfUtc { get; init; }
+}
+
+/// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>
+public sealed record IpcMessage
+{
+    /// <summary>hello | cmd | res | state</summary>
+    public required string Type { get; init; }
+
+    public int? Protocol { get; init; }
+
+    /// <summary>ID komande; ista komanda poslata dvaput izvrsava se jednom.</summary>
+    public string? Id { get; init; }
+
+    public string? Name { get; init; }
+
+    public Dictionary<string, string>? Args { get; init; }
+
+    /// <summary>Admin sesija (za admin komande).</summary>
+    public string? Session { get; init; }
+
+    public bool? Ok { get; init; }
+
+    public string? Error { get; init; }
+
+    public Dictionary<string, string>? Data { get; init; }
+
+    public long? Seq { get; init; }
+
+    public RadioState? State { get; init; }
+
+    public static IpcMessage Success(string? id, Dictionary<string, string>? data = null) =>
+        new() { Type = "res", Id = id, Ok = true, Data = data };
+
+    public static IpcMessage Failure(string? id, string error, Dictionary<string, string>? data = null) =>
+        new() { Type = "res", Id = id, Ok = false, Error = error, Data = data };
+}
+
+/// <summary>Obradjuje komande. Poziva se sa jedne niti u jednom trenutku; nikad sa niti koja pusta zvuk.</summary>
+public interface IIpcHandler
+{
+    IpcMessage Handle(IpcMessage command);
+
+    RadioState CurrentState();
+}
+
+public sealed class IpcProtocolException(string message) : Exception(message);
+
+/// <summary>
+/// Okvir poruke: 4 bajta duzine (little-endian) + JSON u UTF-8. Lokalni imenovani kanal;
+/// ne koristi mrezu (spec. 2.6).
+/// </summary>
+public static class IpcProtocol
+{
+    public const int Version = 1;
+    public const int MaxFrameBytes = 1 << 20;
+    public const string DefaultPipeName = "LustreRadio.Engine.v1";
+
+    /// <summary>Okvir je stigao, ali sadrzaj nije ispravna poruka.</summary>
+    public const string InvalidType = "invalid";
+
+    private static readonly JsonSerializerOptions Json = new()
+    {
+        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+    };
+
+    public static byte[] Encode(IpcMessage message)
+    {
+        var payload = JsonSerializer.SerializeToUtf8Bytes(message, Json);
+        var frame = new byte[4 + payload.Length];
+        BinaryPrimitives.WriteInt32LittleEndian(frame, payload.Length);
+        payload.CopyTo(frame, 4);
+        return frame;
+    }
+
+    public static async Task WriteAsync(Stream stream, IpcMessage message, CancellationToken cancel)
+    {
+        await stream.WriteAsync(Encode(message), cancel).ConfigureAwait(false);
+        await stream.FlushAsync(cancel).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Cita jednu poruku. null = druga strana je zatvorila vezu. Neispravna duzina baca
+    /// InvalidDataException (veza se mora zatvoriti); neispravan JSON vraca poruku tipa "invalid".
+    /// </summary>
+    public static async Task<IpcMessage?> ReadAsync(Stream stream, CancellationToken cancel)
+    {
+        var header = new byte[4];
+        if (!await ReadExactAsync(stream, header, cancel).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        var length = BinaryPrimitives.ReadInt32LittleEndian(header);
+        if (length is <= 0 or > MaxFrameBytes)
+        {
+            throw new InvalidDataException($"Neispravna duzina poruke: {length}.");
+        }
+
+        var payload = new byte[length];
+        if (!await ReadExactAsync(stream, payload, cancel).ConfigureAwait(false))
+        {
+            return null;
+        }
+
+        try
+        {
+            var message = JsonSerializer.Deserialize<IpcMessage>(payload, Json);
+            return message is { Type.Length: > 0 } ? message : new IpcMessage { Type = InvalidType };
+        }
+        catch (JsonException)
+        {
+            return new IpcMessage { Type = InvalidType };
+        }
+    }
+
+    private static async Task<bool> ReadExactAsync(Stream stream, byte[] buffer, CancellationToken cancel)
+    {
+        var read = 0;
+        while (read < buffer.Length)
+        {
+            var n = await stream.ReadAsync(buffer.AsMemory(read), cancel).ConfigureAwait(false);
+            if (n == 0)
+            {
+                return false;
+            }
+
+            read += n;
+        }
+
+        return true;
+    }
+}

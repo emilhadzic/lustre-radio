@@ -1,7 +1,10 @@
+using System.Globalization;
 using LustreRadio.Audio;
+using LustreRadio.Core.Security;
 using LustreRadio.Core.Scheduling;
 using LustreRadio.Core.Time;
 using LustreRadio.Data;
+using LustreRadio.Ipc;
 
 namespace LustreRadio.Playout;
 
@@ -19,6 +22,12 @@ public sealed record EngineHostOptions
     public DirectorOptions Director { get; init; } = new();
 
     public Action<string>? Log { get; init; }
+
+    /// <summary>Ime lokalnog kanala za interfejs. null = bez veze sa interfejsom.</summary>
+    public string? PipeName { get; init; }
+
+    /// <summary>Pauza se sama prekida posle ovog vremena (spec. deo 12: 15 minuta).</summary>
+    public TimeSpan PauseAutoResume { get; init; } = TimeSpan.FromMinutes(15);
 }
 
 /// <summary>
@@ -26,9 +35,10 @@ public sealed record EngineHostOptions
 /// ceka radno vreme, pusta, stisava na zatvaranju, cuva stanje i nastavlja posle restarta.
 /// STANJE: logika proverena offline testovima; rad sa pravim uredjajem proverava se probom.
 /// </summary>
-public sealed class EngineHost : IDisposable
+public sealed class EngineHost : IDisposable, IRadioControl
 {
     public const string MusicFoldersKey = "music-folders";
+    public const string VolumeKey = "volume";
 
     private readonly EngineHostOptions _options;
     private readonly Action<string> _log;
@@ -43,6 +53,12 @@ public sealed class EngineHost : IDisposable
     private AudioFormat _format = AudioFormat.Stereo48000;
     private TimeSpan _notBefore;
     private int _ticks;
+    private PauseGate? _pauseGate;
+    private VolumeControl? _volumeControl;
+    private IpcServer? _server;
+    private NowPlaying? _nowPlaying;
+    private TimeSpan _pausedAt;
+    private double _volume;
 
     public EngineHost(EngineHostOptions options)
     {
@@ -54,6 +70,12 @@ public sealed class EngineHost : IDisposable
         {
             _log("UPOZORENJE: provera baze nije prosla.");
         }
+
+        var (min, max) = RadioCommandHandler.VolumeRange(Database);
+        _volume = Math.Clamp(
+            double.TryParse(Database.Settings.Get(VolumeKey), NumberStyles.Float, CultureInfo.InvariantCulture, out var saved) ? saved : max,
+            min,
+            max);
     }
 
     public LustreDatabase Database { get; }
@@ -100,17 +122,145 @@ public sealed class EngineHost : IDisposable
             _director.Schedule = AlwaysOpenSchedule(_director.Schedule);
         }
 
-        _director.TrackStarted += playing => TrackStarted?.Invoke(playing);
+        _director.TrackStarted += playing =>
+        {
+            _nowPlaying = playing;
+            TrackStarted?.Invoke(playing);
+        };
+
+        if (_options.PipeName is not null)
+        {
+            var sessions = new AdminSessions(_monotonic, () => Database.Settings.Get(RadioCommandHandler.PinKey));
+            _server = new IpcServer(_options.PipeName, new RadioCommandHandler(this, Database, sessions), _log);
+            _server.Start();
+            _log("Veza za interfejs: " + _options.PipeName);
+        }
+
         _thread = new Thread(Run) { IsBackground = true, Name = "LustreRadio.Host" };
         _thread.Start();
     }
 
     /// <summary>Prelazak na sledecu pesmu.</summary>
-    public void Skip()
+    public void Skip() => Next(null);
+
+    public bool Next(string? expectedTrackId)
     {
         lock (_sessionLock)
         {
-            _session?.Skip();
+            if (_session is null)
+            {
+                return false;
+            }
+
+            if (expectedTrackId is not null && (!_session.TryGetPosition(out var current, out _) || current != expectedTrackId))
+            {
+                return false; // ta pesma vise ne svira: komanda je zakasnela ili ponovljena
+            }
+
+            _session.Skip();
+            return true;
+        }
+    }
+
+    public void Pause()
+    {
+        lock (_sessionLock)
+        {
+            if (_pauseGate is { IsPaused: false })
+            {
+                _pauseGate.Pause();
+                _pausedAt = _monotonic.Elapsed;
+                _log("Pauza (sama se prekida posle " + (int)_options.PauseAutoResume.TotalMinutes + " min).");
+            }
+        }
+
+        Publish();
+    }
+
+    public void Resume()
+    {
+        lock (_sessionLock)
+        {
+            if (_pauseGate is { IsPaused: true })
+            {
+                _pauseGate.Resume();
+                _log("Nastavak posle pauze.");
+            }
+        }
+
+        Publish();
+    }
+
+    public void SetVolume(double volume)
+    {
+        lock (_sessionLock)
+        {
+            _volume = Math.Clamp(volume, 0, 1);
+            _volumeControl?.SetVolume(_volume);
+            Database.Settings.Set(VolumeKey, _volume.ToString("R", CultureInfo.InvariantCulture));
+        }
+
+        Publish();
+    }
+
+    public void Rescan()
+    {
+        var summary = Index();
+        _log($"Skeniranje: {summary}");
+        Publish();
+    }
+
+    public void SetMusicFolders(IReadOnlyList<string> folders)
+    {
+        Database.Settings.SetJson(MusicFoldersKey, folders.ToList());
+        Rescan();
+    }
+
+    public RadioState GetState()
+    {
+        lock (_sessionLock)
+        {
+            var (min, max) = RadioCommandHandler.VolumeRange(Database);
+            var playing = _session is not null ? _nowPlaying : null;
+            var position = 0.0;
+            var trackId = playing?.TrackId;
+            if (_session is not null && _session.TryGetPosition(out var id, out var seconds) && id == trackId)
+            {
+                position = seconds;
+            }
+
+            return new RadioState
+            {
+                OnAir = _session is not null,
+                Paused = _pauseGate?.IsPaused ?? false,
+                TrackId = trackId,
+                Title = playing?.Title,
+                Artist = playing?.Artist,
+                PositionSeconds = position,
+                DurationSeconds = playing?.DurationSeconds ?? 0,
+                Program = playing?.Program,
+                DayPart = playing?.Part?.ToString(),
+                Volume = _volume,
+                VolumeMin = min,
+                VolumeMax = max,
+                Output = _output?.State.ToString(),
+                Device = _output?.DeviceName,
+                BroadcastableTracks = BroadcastableCount,
+                PinIsSet = !string.IsNullOrEmpty(Database.Settings.Get(RadioCommandHandler.PinKey)),
+                AsOfUtc = DateTime.UtcNow,
+            };
+        }
+    }
+
+    private void Publish()
+    {
+        try
+        {
+            _server?.Broadcast(GetState());
+        }
+        catch (Exception ex)
+        {
+            _log("Slanje stanja interfejsu nije uspelo: " + ex.Message);
         }
     }
 
@@ -118,6 +268,7 @@ public sealed class EngineHost : IDisposable
     {
         _stop.Set();
         _thread?.Join(5000);
+        _server?.Dispose();
         lock (_sessionLock)
         {
             try
@@ -162,6 +313,7 @@ public sealed class EngineHost : IDisposable
                 _log("Greska u glavnoj petlji: " + ex);
             }
 
+            Publish();
             _stop.Wait(TimeSpan.FromSeconds(1));
         }
     }
@@ -181,6 +333,23 @@ public sealed class EngineHost : IDisposable
 
         _ticks++;
         _session.Tick(saveSnapshot: _ticks % 5 == 0);
+
+        if (_pauseGate is { IsPaused: true })
+        {
+            if (!director.ShouldPlayNow())
+            {
+                // radno vreme je isteklo tokom pauze: nema sta da se stisava
+                EndSession("zatvaranje tokom pauze");
+                return;
+            }
+
+            if (_monotonic.Elapsed - _pausedAt >= _options.PauseAutoResume)
+            {
+                _pauseGate.Resume();
+                _log("Pauza je istekla; muzika se nastavlja sama.");
+            }
+        }
+
         if (_output!.State == OutputState.Finished)
         {
             EndSession("kraj emitovanja");
@@ -192,7 +361,9 @@ public sealed class EngineHost : IDisposable
     {
         var session = new RadioSession(director, _format, director.LoadSnapshot());
         var ring = new FloatRingBuffer(65536);
-        var pump = new RenderPump(session.Output, new Limiter(_format), ring);
+        var pauseGate = new PauseGate(session.Output);
+        var volume = new VolumeControl(pauseGate, _volume);
+        var pump = new RenderPump(volume, new Limiter(_format), ring);
         pump.Error += ex => _log("Greska pripreme zvuka: " + ex);
         var output = new ResilientOutput(ring, pump, _format);
         output.StateChanged += (state, detail) => OutputStateChanged?.Invoke(state, detail);
@@ -200,6 +371,8 @@ public sealed class EngineHost : IDisposable
         _session = session;
         _pump = pump;
         _output = output;
+        _pauseGate = pauseGate;
+        _volumeControl = volume;
         _ticks = 0;
         _log(session.Resumed ? "Pocinje emitovanje (nastavak prekinute pesme)." : "Pocinje emitovanje.");
         pump.Start();
@@ -219,5 +392,7 @@ public sealed class EngineHost : IDisposable
         _output = null;
         _pump = null;
         _session = null;
+        _pauseGate = null;
+        _volumeControl = null;
     }
 }
