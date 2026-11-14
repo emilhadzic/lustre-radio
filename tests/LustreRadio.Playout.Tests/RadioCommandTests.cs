@@ -117,7 +117,10 @@ public sealed class RadioCommandTests : IDisposable
     [InlineData("touch")]
     public void AdminCommands_AreRefusedWithoutValidSession(string command)
     {
-        var args = new Dictionary<string, string> { ["folder0"] = @"D:\Muzika", ["min"] = "0", ["max"] = "1" };
+        var args = new Dictionary<string, string>
+        {
+            ["folder0"] = Path.GetTempPath(), ["min"] = "0", ["max"] = "1", ["screen"] = "staff", ["lang"] = "en",
+        };
 
         Assert.Equal("admin-required", Send(command, args).Error);
         Assert.Equal("admin-required", Send(command, args, session: "izmisljena-sesija").Error);
