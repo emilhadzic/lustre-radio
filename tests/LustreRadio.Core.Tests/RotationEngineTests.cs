@@ -203,4 +203,72 @@ public class RotationEngineTests
         Assert.Equal(98, fridayEvening.PlaysPerOccurrence); // 6,5 h
         Assert.Equal(0, fridayEvening.MatchingTracks + fridayEvening.CompatibleTracks);
     }
+
+    // Proba vlasnika 14.11.2026.: pesme bez zanra u oznakama isle su uvek istim (abecednim) redom.
+    [Fact]
+    public void LibraryWithoutGenres_IsShuffled_NotPlayedInLibraryOrder()
+    {
+        var library = Enumerable.Range(0, 5)
+            .Select(i => new TrackInfo { Id = $"t{i}", Artist = $"?{i}", Broadcastable = true })
+            .ToList();
+        var settings = new RotationSettings();
+        var firstPicks = new HashSet<string>();
+        var orders = new HashSet<string>();
+
+        for (var seed = 0; seed < 40; seed++)
+        {
+            var engine = new RotationEngine(new Random(seed));
+            var state = new RotationState();
+            var order = new List<string>();
+            for (var i = 0; i < 5; i++)
+            {
+                var now = Start.AddMinutes(4 * i);
+                var pick = engine.Pick(library, state, Lounge, now, settings)!;
+                Assert.Equal(MatchTier.Any, pick.Tier);
+                Assert.False(pick.TrackGapRelaxed); // nijedna jos nije pustana
+                state.Record(pick.Track, now);
+                order.Add(pick.Track.Id);
+            }
+
+            Assert.Equal(5, order.Distinct().Count());
+            firstPicks.Add(order[0]);
+            orders.Add(string.Join(",", order));
+        }
+
+        Assert.Equal(5, firstPicks.Count);  // svaka pesma nekad bude prva
+        Assert.True(orders.Count >= 20, $"samo {orders.Count} razlicitih redosleda u 40 pokusaja");
+    }
+
+    [Fact]
+    public void SmallLibraryWithoutGenres_SecondRoundIsNotSameOrderAsFirst()
+    {
+        var library = Enumerable.Range(0, 8)
+            .Select(i => new TrackInfo { Id = $"t{i}", Artist = $"?{i}", Broadcastable = true })
+            .ToList();
+        var different = 0;
+        for (var seed = 0; seed < 20; seed++)
+        {
+            var engine = new RotationEngine(new Random(seed));
+            var state = new RotationState();
+            var ids = new List<string>();
+            for (var i = 0; i < 16; i++)
+            {
+                var now = Start.AddMinutes(4 * i);
+                var pick = engine.Pick(library, state, Lounge, now, new RotationSettings())!;
+                state.Record(pick.Track, now);
+                ids.Add(pick.Track.Id);
+                if (i > 0)
+                {
+                    Assert.NotEqual(ids[i - 1], ids[i]);
+                }
+            }
+
+            if (!ids.Take(8).SequenceEqual(ids.Skip(8)))
+            {
+                different++;
+            }
+        }
+
+        Assert.True(different >= 18, $"drugi krug je isti kao prvi u {20 - different} od 20 slucajeva");
+    }
 }

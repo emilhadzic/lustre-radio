@@ -39,7 +39,7 @@ public static class LibraryIndexer
                 Title = scanned.Title,
                 Artist = scanned.Artist,
                 Album = scanned.Album,
-                Genres = scanned.Genres,
+                Genres = scanned.Genres.Count > 0 ? scanned.Genres : GenresFromFolder(path, folders),
                 Kind = scanned.Kind.ToString(),
                 DecoderId = scanned.DecoderId,
                 DecodeOk = scanned.DecodeOk,
@@ -86,6 +86,29 @@ public static class LibraryIndexer
         {
             VerifiedCollectively = ApplyCollectiveLicense(db),
         };
+    }
+
+    /// <summary>
+    /// Kad fajl nema zanr u oznakama, zanr je naziv podfoldera u kom se nalazi
+    /// (npr. muzika\Deep House\pesma.mp3 -> "Deep House"). Fajl direktno u folderu sa muzikom nema zanr.
+    /// </summary>
+    public static IReadOnlyList<string> GenresFromFolder(string path, IReadOnlyList<string> folders)
+    {
+        foreach (var folder in folders)
+        {
+            var root = Path.TrimEndingDirectorySeparator(Path.GetFullPath(folder)) + Path.DirectorySeparatorChar;
+            var full = Path.GetFullPath(path);
+            if (!full.StartsWith(root, StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var relative = full[root.Length..];
+            var separator = relative.IndexOf(Path.DirectorySeparatorChar);
+            return separator > 0 ? [relative[..separator].Trim()] : [];
+        }
+
+        return [];
     }
 
     public const string CollectiveLicenseKey = "collective-license";

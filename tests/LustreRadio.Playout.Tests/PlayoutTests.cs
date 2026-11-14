@@ -387,4 +387,39 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(0, _env.Index().VerifiedCollectively);
         Assert.Equal(LicenseStatus.Imported, _env.Db.Licenses.Get(_env.TrackOf(900).ContentHash)!.Status);
     }
+
+    [Fact] // zanr iz naziva podfoldera, kad ga nema u oznakama fajla
+    public void SubfolderName_BecomesGenre_AndScheduleUsesIt()
+    {
+        var deep = Path.Combine(_env.MusicFolder, "Deep House");
+        var jazz = Path.Combine(_env.MusicFolder, "Smooth Jazz");
+        Directory.CreateDirectory(deep);
+        Directory.CreateDirectory(jazz);
+        for (var i = 0; i < 4; i++)
+        {
+            TestEnvironment.WriteTone(Path.Combine(deep, $"ton-{300 + (100 * i)}.wav"), 300 + (100 * i), 3);
+            TestEnvironment.WriteTone(Path.Combine(jazz, $"ton-{1300 + (100 * i)}.wav"), 1300 + (100 * i), 3);
+        }
+
+        _env.AddTone(2500, 3); // direktno u folderu: bez zanra
+        _env.Index();
+        Assert.Equal(["Deep House"], _env.TrackOf(300).Genres);
+        Assert.Equal(["Smooth Jazz"], _env.TrackOf(1300).Genres);
+        Assert.Empty(_env.TrackOf(2500).Genres);
+        foreach (var track in _env.Db.Tracks.GetAll())
+        {
+            _env.Verify(int.Parse(track.Title.Split('-')[1]));
+        }
+
+        // petak uvece: program trazi deep house, melodic house, modern lounge
+        var friday = Monday.AddDays(4).AddHours(19);
+        var (director, clock) = _env.Director(friday);
+        var audio = TestEnvironment.Render(TestEnvironment.Session(director, clock), 7);
+
+        var played = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime());
+        Assert.Equal(4, played.Count);
+        Assert.All(played, p => Assert.Equal("Program", p.Tier));
+        Assert.All(played, p => Assert.Equal(["Deep House"], _env.Db.Tracks.Get(p.TrackId)!.Genres));
+        Assert.True(TestEnvironment.Tone(audio, 1300) < 0.0005);
+    }
 }

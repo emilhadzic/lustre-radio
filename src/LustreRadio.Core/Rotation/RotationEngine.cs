@@ -55,22 +55,38 @@ public sealed class RotationEngine(Random random)
             }
         }
 
-        // 4: najduze nepustane (cetvrtina sa najstarijim pustanjem), da razmak bude najveci moguci
+        // 4: redom po nivoima (program, srodni, bilo koja dozvoljena)
         foreach (var tier in Enum.GetValues<MatchTier>())
         {
-            var candidates = tiers[(int)tier].Where(NotPrevious)
-                .OrderBy(t => state.LastPlayed(t.Id) ?? DateTimeOffset.MinValue)
-                .ToList();
+            var candidates = tiers[(int)tier].Where(NotPrevious).ToList();
             if (candidates.Count == 0)
             {
                 continue;
             }
 
-            var oldest = candidates.Take(Math.Max(1, candidates.Count / 4)).ToList();
+            // Pesme koje jos postuju ciljni razmak biraju se nasumicno. Ovo je redovan put za
+            // biblioteku bez zanrova u oznakama, gde su sve pesme na nivou "bilo koja".
+            var fresh = candidates.Where(TrackGapOk).ToList();
+            if (fresh.Count > 0)
+            {
+                var freshWithArtistGap = fresh.Where(ArtistGapOk).ToList();
+                return Result(
+                    Choose(freshWithArtistGap.Count > 0 ? freshWithArtistGap : fresh, state), tier, state, now,
+                    trackGapRelaxed: false, artistGapRelaxed: freshWithArtistGap.Count == 0);
+            }
+
+            // Ciljni razmak ne moze da se postuje: bira se nasumicno medju najduze nepustanima
+            // (cetvrtina, a bar dve), da razmak bude sto veci, a redosled ne uvek isti.
+            var shuffled = candidates.Select(t => (Track: t, Key: random.Next())).ToList();
+            var oldest = shuffled
+                .OrderBy(x => state.LastPlayed(x.Track.Id) ?? DateTimeOffset.MinValue)
+                .ThenBy(x => x.Key)
+                .Take(Math.Max(Math.Min(2, candidates.Count), candidates.Count / 4))
+                .Select(x => x.Track)
+                .ToList();
             var withArtistGap = oldest.Where(ArtistGapOk).ToList();
-            var pool = withArtistGap.Count > 0 ? withArtistGap : oldest;
-            var chosen = Choose(pool, state);
-            return Result(chosen, tier, state, now, trackGapRelaxed: !TrackGapOk(chosen), artistGapRelaxed: withArtistGap.Count == 0);
+            var chosen = Choose(withArtistGap.Count > 0 ? withArtistGap : oldest, state);
+            return Result(chosen, tier, state, now, trackGapRelaxed: true, artistGapRelaxed: withArtistGap.Count == 0);
         }
 
         // postoji samo jedna dozvoljena pesma: bolje ona ponovo nego tisina
