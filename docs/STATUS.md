@@ -123,3 +123,15 @@ Napomene uz M3 korak 2:
 - Upis istorije u bazu radi se na niti koja priprema zvuk (zaštićeno baferom od ~0,7 s). Biranje nekoliko pesama unapred, kako piše u specifikaciji 2.6, još nije urađeno.
 - `ProbeLicensing` i „uvek otvoreno“ postoje samo za probu; pravi Engine ih ne koristi.
 - Engine još nema nadzor (M4), vezu sa interfejsom (M3 korak 3) ni podešavanje foldera sa muzikom kroz interfejs.
+
+## Odluka vlasnika 14.11.2026.: izjava o kolektivnoj licenci
+
+Vlasnik je izjavio da ima potrebna prava i da plaća SOKOJ i OFPS, i tražio da pesme sviraju na tom osnovu.
+
+- Pesma sme u eter i na osnovu **izjave vlasnika o kolektivnoj licenci** (tip „Kolektivna licenca (izjava vlasnika)“). Program beleži organizacije, ko je i kada dao izjavu; odgovornost za tačnost izjave je na vlasniku.
+- Uz izjavu sa automatskom primenom, nove pesme u folderima sa muzikom same dobijaju status „Provereno“.
+- Kapija licenci ostaje jedina i ista: bez zapisa o osnovu ništa ne svira. Pesma koju je admin odbio ostaje odbijena. Zamenjen fajl i dalje gubi status.
+- Unapred pripremljeni prelazi (obrađene kopije) i dalje traže posebnu potvrdu da su izmene dozvoljene; bez nje se koristi Smart.
+- Ovo menja deo 9 i odluku D10 specifikacije v4.1 u tački „nikad se ne pretpostavlja pokrivenost SOKOJ/OFPS“: sada se pokrivenost prihvata na osnovu izričite izjave vlasnika.
+- Privremeno označavanje „za probu“ je uklonjeno; Proba koristi istu izjavu.
+- Dokaz: GitHub Actions, 14.11.2026., 238 testova prošlo (4 nova za izjavu).
