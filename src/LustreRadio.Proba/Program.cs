@@ -43,25 +43,38 @@ public static class Program
         var summary = host.Index();
         Say($"Fajlova: {summary.FilesOnDisk}; novih: {summary.Added}; ponovo skeniranih: {summary.Rescanned}; nestalih: {summary.MarkedMissing}; ne mogu da se dekodiraju: {summary.Undecodable}");
 
-        var tracks = host.Database.Tracks.GetAll();
-        var licenses = host.Database.Licenses.GetAll();
-        var unverified = tracks.Count(t => t.DecodeOk && !t.Missing &&
-            (!licenses.TryGetValue(t.ContentHash, out var l) || l.Status != LicenseStatus.Verified));
-        if (unverified > 0)
+        var declaration = host.Database.Settings.GetJson<CollectiveLicense>(LibraryIndexer.CollectiveLicenseKey);
+        if (declaration is null)
         {
-            Say($"{unverified} pesama nema proverenu licencu i zato NE SME da svira.");
+            Say("Pesma sme da svira samo ako za nju postoji zabelezen osnov (licenca).");
             var answer = "n";
             if (!auto)
             {
-                Console.Write("Oznaciti ih kao proverene SAMO ZA OVU PROBU? (d/n): ");
+                Console.WriteLine("Da li izjavljujete da je muzika koju pustate pokrivena vasim ugovorima");
+                Console.Write("sa SOKOJ i OFPS? Izjava se belezi sa datumom. (d/n): ");
                 answer = Console.ReadLine()?.Trim().ToLowerInvariant() ?? "n";
             }
 
             Say("Odgovor: " + answer);
             if (answer == "d")
             {
-                Say($"Oznaceno za probu: {ProbeLicensing.MarkAllVerified(host.Database)} ({ProbeLicensing.Marker}).");
+                host.Database.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, new CollectiveLicense
+                {
+                    Organizations = "SOKOJ, OFPS",
+                    DeclaredBy = "vlasnik (proba)",
+                    DeclaredAt = DateTimeOffset.Now,
+                });
             }
+        }
+        else
+        {
+            Say($"Vazi izjava o kolektivnoj licenci: {declaration.Organizations} ({declaration.DeclaredBy}, {declaration.DeclaredAt:yyyy-MM-dd}).");
+        }
+
+        var applied = LibraryIndexer.ApplyCollectiveLicense(host.Database);
+        if (applied > 0)
+        {
+            Say($"Po izjavi o kolektivnoj licenci potvrdjeno pesama: {applied}.");
         }
 
         host.TrackStarted += playing => Say(

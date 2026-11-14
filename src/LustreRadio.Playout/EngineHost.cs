@@ -1,5 +1,4 @@
 using LustreRadio.Audio;
-using LustreRadio.Core.Licensing;
 using LustreRadio.Core.Scheduling;
 using LustreRadio.Core.Time;
 using LustreRadio.Data;
@@ -220,55 +219,5 @@ public sealed class EngineHost : IDisposable
         _output = null;
         _pump = null;
         _session = null;
-    }
-}
-
-/// <summary>
-/// SAMO ZA PROBU: oznacava sve pesme u probnoj bazi kao proverene, da bi mogle da se cuju.
-/// Ovo NIJE provera licence i ne sme se koristiti za bazu koja radi u lokalu.
-/// </summary>
-public static class ProbeLicensing
-{
-    public const string Marker = "PROBA - nije provera licence";
-
-    public static int MarkAllVerified(LustreDatabase db)
-    {
-        ArgumentNullException.ThrowIfNull(db);
-        var count = 0;
-        foreach (var track in db.Tracks.GetAll().Where(t => t.DecodeOk && t.ContentHash.Length > 0))
-        {
-            var license = db.Licenses.EnsureImported(track.ContentHash, "proba");
-            if (license.Status == LicenseStatus.Verified)
-            {
-                continue;
-            }
-
-            if (license.Status is LicenseStatus.Imported or LicenseStatus.Recheck or LicenseStatus.Rejected)
-            {
-                db.Licenses.Save(license with { Status = LicenseStatus.UnderReview }, "proba", Marker);
-            }
-
-            db.Licenses.Save(
-                (db.Licenses.Get(track.ContentHash) ?? license) with
-                {
-                    Status = LicenseStatus.UnderReview,
-                    Source = "PROBA",
-                    SourceUrl = "proba://lokalni-fajl",
-                    Author = string.IsNullOrWhiteSpace(track.Artist) ? "nepoznat" : track.Artist,
-                    LicenseType = Marker,
-                    DownloadedOn = DateOnly.FromDateTime(DateTime.Now),
-                    CommercialUse = Answer.Yes,
-                    PublicPerformance = Answer.Yes,
-                    Modifications = Answer.Yes,
-                    AttributionRequired = Answer.No,
-                    HasProof = true,
-                },
-                "proba",
-                Marker);
-            db.Licenses.Verify(track.ContentHash, "proba", DateTimeOffset.Now);
-            count++;
-        }
-
-        return count;
     }
 }

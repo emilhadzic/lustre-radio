@@ -59,6 +59,32 @@ public sealed record LicenseRecord
     public string? VerifiedBy { get; init; }
 
     public DateTimeOffset? VerifiedAt { get; init; }
+
+    /// <summary>Pravo na pustanje potice iz izjave vlasnika o kolektivnoj licenci, a ne iz licence same pesme.</summary>
+    public bool IsCollective => string.Equals(LicenseType, LicenseGate.CollectiveType, StringComparison.Ordinal);
+}
+
+/// <summary>
+/// Izjava vlasnika lokala da je muzika koju pusta pokrivena njegovim ugovorima sa organizacijama
+/// za kolektivno ostvarivanje prava (odluka vlasnika od 14.11.2026.). Program belezi ko je i kada
+/// to izjavio; odgovornost za tacnost izjave je na vlasniku.
+/// </summary>
+public sealed record CollectiveLicense
+{
+    /// <summary>Npr. "SOKOJ, OFPS".</summary>
+    public required string Organizations { get; init; }
+
+    public required string DeclaredBy { get; init; }
+
+    public required DateTimeOffset DeclaredAt { get; init; }
+
+    /// <summary>Nove pesme iz foldera sa muzikom automatski dobijaju status "Provereno" po ovoj izjavi.</summary>
+    public bool AutoApply { get; init; } = true;
+
+    /// <summary>Putanja do ugovora ili racuna (preporuceno, nije obavezno).</summary>
+    public string? ProofPath { get; init; }
+
+    public string? Note { get; init; }
 }
 
 public sealed record GateResult(bool Allowed, string Reason)
@@ -75,6 +101,9 @@ public sealed record GateResult(bool Allowed, string Reason)
 /// </summary>
 public static class LicenseGate
 {
+    /// <summary>Tip licence za pesme pokrivene izjavom o kolektivnoj licenci.</summary>
+    public const string CollectiveType = "Kolektivna licenca (izjava vlasnika)";
+
     /// <param name="license">Evidencija licence ili null ako ne postoji.</param>
     /// <param name="actualContentHash">Hes fajla koji bi se zaista pustio.</param>
     public static GateResult CanBroadcast(LicenseRecord? license, string? actualContentHash)
@@ -146,6 +175,17 @@ public static class LicenseGate
         }
 
         Require(!string.IsNullOrWhiteSpace(license.ContentHash), "Nedostaje hes fajla.");
+
+        if (license.IsCollective)
+        {
+            // Osnov je izjava vlasnika: ne traze se podaci o pojedinacnoj pesmi (URL, autor, datum, dokaz).
+            // Izmene ne moraju biti potvrdjene: bez toga se samo ne prave obradjene kopije (pripremljeni prelazi).
+            Require(!string.IsNullOrWhiteSpace(license.Source), "Nedostaje naziv organizacije (npr. SOKOJ, OFPS).");
+            Require(license.CommercialUse == Answer.Yes, "Komercijalna upotreba nije potvrdjena.");
+            Require(license.PublicPerformance == Answer.Yes, "Javno izvodjenje u lokalu nije potvrdjeno.");
+            return blockers;
+        }
+
         Require(!string.IsNullOrWhiteSpace(license.Source), "Nedostaje izvor.");
         Require(!string.IsNullOrWhiteSpace(license.SourceUrl), "Nedostaje URL izvora.");
         Require(!string.IsNullOrWhiteSpace(license.Author), "Nedostaje autor.");

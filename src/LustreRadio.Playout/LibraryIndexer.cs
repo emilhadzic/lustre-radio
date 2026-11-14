@@ -1,9 +1,14 @@
+using LustreRadio.Core.Licensing;
 using LustreRadio.Data;
 using LustreRadio.Library;
 
 namespace LustreRadio.Playout;
 
-public sealed record IndexSummary(int FilesOnDisk, int Added, int Rescanned, int MarkedMissing, int Undecodable);
+public sealed record IndexSummary(int FilesOnDisk, int Added, int Rescanned, int MarkedMissing, int Undecodable)
+{
+    /// <summary>Koliko je pesama u ovom prolazu potvrdjeno po izjavi o kolektivnoj licenci.</summary>
+    public int VerifiedCollectively { get; init; }
+}
 
 /// <summary>
 /// Uskladjuje bazu sa folderima: nove i izmenjene fajlove skenira, nestale oznacava.
@@ -77,6 +82,42 @@ public static class LibraryIndexer
             }
         }
 
-        return new IndexSummary(onDisk.Count, diff.New.Count, diff.Changed.Count, markedMissing, undecodable);
+        return new IndexSummary(onDisk.Count, diff.New.Count, diff.Changed.Count, markedMissing, undecodable)
+        {
+            VerifiedCollectively = ApplyCollectiveLicense(db),
+        };
+    }
+
+    public const string CollectiveLicenseKey = "collective-license";
+
+    /// <summary>
+    /// Ako je vlasnik dao izjavu o kolektivnoj licenci sa automatskom primenom, sve ispravne
+    /// pesme koje jos nisu proverene dobijaju status "Provereno" po toj izjavi.
+    /// </summary>
+    public static int ApplyCollectiveLicense(LustreDatabase db)
+    {
+        ArgumentNullException.ThrowIfNull(db);
+        var declaration = db.Settings.GetJson<CollectiveLicense>(CollectiveLicenseKey);
+        if (declaration is not { AutoApply: true })
+        {
+            return 0;
+        }
+
+        var count = 0;
+        foreach (var hash in db.Tracks.GetAll().Where(t => t.DecodeOk && !t.Missing && t.ContentHash.Length > 0).Select(t => t.ContentHash).Distinct())
+        {
+            // Odbijene pesme ostaju odbijene: to je pojedinacna odluka admina.
+            if (db.Licenses.Get(hash) is { Status: LicenseStatus.Rejected })
+            {
+                continue;
+            }
+
+            if (db.Licenses.VerifyCollective(hash, declaration))
+            {
+                count++;
+            }
+        }
+
+        return count;
     }
 }

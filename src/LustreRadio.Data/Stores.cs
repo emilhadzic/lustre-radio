@@ -263,6 +263,40 @@ public sealed class LicenseStore
         return verified;
     }
 
+    /// <summary>
+    /// Potvrdjuje pesmu na osnovu izjave vlasnika o kolektivnoj licenci. Vec proverene pesme se ne diraju.
+    /// Vraca true ako je status ovim postao "Provereno".
+    /// </summary>
+    public bool VerifyCollective(string contentHash, CollectiveLicense declaration)
+    {
+        ArgumentNullException.ThrowIfNull(declaration);
+        var license = EnsureImported(contentHash, declaration.DeclaredBy);
+        if (license.Status == LicenseStatus.Verified)
+        {
+            return false;
+        }
+
+        if (license.Status != LicenseStatus.UnderReview)
+        {
+            license = license with { Status = LicenseStatus.UnderReview };
+            Save(license, declaration.DeclaredBy, "kolektivna licenca");
+        }
+
+        Save(
+            license with
+            {
+                Source = declaration.Organizations,
+                LicenseType = LicenseGate.CollectiveType,
+                CommercialUse = Answer.Yes,
+                PublicPerformance = Answer.Yes,
+                HasProof = !string.IsNullOrWhiteSpace(declaration.ProofPath),
+            },
+            declaration.DeclaredBy,
+            "kolektivna licenca");
+        Verify(contentHash, declaration.DeclaredBy, declaration.DeclaredAt);
+        return true;
+    }
+
     /// <summary>Putanja do sacuvanog dokaza (PDF ili snimak ekrana).</summary>
     public void AttachProof(string contentHash, string proofPath, string actor)
     {

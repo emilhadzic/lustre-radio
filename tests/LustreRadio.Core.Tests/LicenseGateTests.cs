@@ -173,4 +173,27 @@ public class LicenseGateTests
             }
         }
     }
+
+    [Fact] // odluka vlasnika 14.11.2026.
+    public void CollectiveLicense_NeedsOrganizationAndConfirmedUse_ButNotPerTrackDetails()
+    {
+        var collective = new LicenseRecord
+        {
+            ContentHash = Hash, Status = LicenseStatus.UnderReview, Source = "SOKOJ, OFPS", LicenseType = LicenseGate.CollectiveType,
+            CommercialUse = Answer.Yes, PublicPerformance = Answer.Yes,
+        };
+
+        Assert.True(collective.IsCollective);
+        Assert.Empty(LicenseGate.VerificationBlockers(collective));
+        Assert.Single(LicenseGate.VerificationBlockers(collective with { Source = " " }));
+        Assert.Single(LicenseGate.VerificationBlockers(collective with { PublicPerformance = Answer.Unknown }));
+        Assert.Single(LicenseGate.VerificationBlockers(collective with { CommercialUse = Answer.No }));
+
+        var verified = LicenseGate.Verify(collective, "vlasnik", DateTimeOffset.Now);
+        Assert.True(LicenseGate.CanBroadcast(verified, Hash).Allowed);
+        Assert.False(LicenseGate.CanBroadcast(verified, "drugi-hes").Allowed);
+
+        // obican tip licence sa istim (nepotpunim) podacima i dalje ne prolazi
+        Assert.NotEmpty(LicenseGate.VerificationBlockers(collective with { LicenseType = "CC BY 4.0" }));
+    }
 }

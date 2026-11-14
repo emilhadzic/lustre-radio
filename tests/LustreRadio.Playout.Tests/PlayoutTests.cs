@@ -326,17 +326,65 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
-    public void ProbeHelpers_OpenAllDay_AndMarkTracksForTrial()
+    public void AlwaysOpenSchedule_KeepsProgramsButOpensAllDay()
     {
-        AddTones(3, 2, verify: false);
         var open = EngineHost.AlwaysOpenSchedule(DefaultSchedule.Create());
         Assert.True(ScheduleEngine.Evaluate(open, null, Monday.AddHours(3)).ShouldPlay);
         Assert.Equal("Ponedeljak - vece", ScheduleEngine.Evaluate(open, null, Monday.AddHours(23).AddMinutes(45)).Program!.Name);
+    }
 
-        Assert.Equal(3, ProbeLicensing.MarkAllVerified(_env.Db));
-        Assert.Equal(0, ProbeLicensing.MarkAllVerified(_env.Db));
+    [Fact] // odluka vlasnika 14.11.2026.: izjava o kolektivnoj licenci
+    public void CollectiveLicenseDeclaration_VerifiesTracks_IncludingOnesAddedLater()
+    {
+        AddTones(3, 2, verify: false);
+        var (before, _) = _env.Director(Monday.AddHours(10));
+        Assert.Equal(0, before.BroadcastableCount);
+
+        // bez izjave indeksiranje nista ne potvrdjuje
+        Assert.Equal(0, _env.Index().VerifiedCollectively);
+
+        _env.Db.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, new CollectiveLicense
+        {
+            Organizations = "SOKOJ, OFPS", DeclaredBy = "vlasnik", DeclaredAt = new DateTimeOffset(2026, 11, 14, 7, 0, 0, TimeSpan.FromHours(1)),
+        });
+        Assert.Equal(3, _env.Index().VerifiedCollectively);
+        Assert.Equal(0, _env.Index().VerifiedCollectively);
+
+        // pesma dodata kasnije je pokrivena istom izjavom
+        _env.AddTone(900, 2);
+        Assert.Equal(1, _env.Index().VerifiedCollectively);
+
         var (director, _) = _env.Director(Monday.AddHours(10));
-        Assert.Equal(3, director.BroadcastableCount);
-        Assert.All(_env.Db.Licenses.GetAll().Values, l => Assert.Equal(ProbeLicensing.Marker, l.LicenseType));
+        Assert.Equal(4, director.BroadcastableCount);
+
+        var license = _env.Db.Licenses.Get(_env.TrackOf(900).ContentHash)!;
+        Assert.True(license.IsCollective);
+        Assert.Equal("SOKOJ, OFPS", license.Source);
+        Assert.Equal("vlasnik", license.VerifiedBy);
+        Assert.Contains(_env.Db.Licenses.Audit(license.ContentHash), a => a.Note == "kolektivna licenca");
+
+        // obradjene kopije (pripremljeni prelazi) i dalje nisu dozvoljene bez posebne potvrde
+        Assert.True(LicenseGate.CanBroadcast(license, license.ContentHash).Allowed);
+        Assert.False(LicenseGate.CanPrepareTransition(license, license.ContentHash, license, license.ContentHash).Allowed);
+    }
+
+    [Fact]
+    public void CollectiveLicense_DoesNotOverrideRejectedTrack_AndCanBeSwitchedOff()
+    {
+        var tones = AddTones(3, 2, verify: false);
+        var rejectedHash = _env.TrackOf(tones[0]).ContentHash;
+        var rejected = _env.Db.Licenses.Get(rejectedHash)!;
+        _env.Db.Licenses.Save(rejected with { Status = LicenseStatus.UnderReview }, "admin");
+        _env.Db.Licenses.Save(rejected with { Status = LicenseStatus.Rejected }, "admin", "ne zelim ovu pesmu");
+
+        var declaration = new CollectiveLicense { Organizations = "SOKOJ, OFPS", DeclaredBy = "vlasnik", DeclaredAt = DateTimeOffset.Now };
+        _env.Db.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, declaration);
+        Assert.Equal(2, _env.Index().VerifiedCollectively);
+        Assert.Equal(LicenseStatus.Rejected, _env.Db.Licenses.Get(rejectedHash)!.Status);
+
+        _env.Db.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, declaration with { AutoApply = false });
+        _env.AddTone(900, 2);
+        Assert.Equal(0, _env.Index().VerifiedCollectively);
+        Assert.Equal(LicenseStatus.Imported, _env.Db.Licenses.Get(_env.TrackOf(900).ContentHash)!.Status);
     }
 }
