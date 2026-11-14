@@ -94,6 +94,7 @@ try {
 finally {
     Get-Process -Name 'LustreRadio.Watchdog', 'LustreRadio.Engine' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
     schtasks /Delete /TN 'LustreRadio Watchdog' /F 2>$null | Out-Null
+    $global:LASTEXITCODE = 0   # brisanje vec obrisanog zadatka nije greska; pravi neuspeh javlja throw
     Write-Host '--- dnevnik nadzora (kraj) ---'
     Get-ChildItem "$env:ProgramData\LustreRadio\logs\watchdog-*.log" -ErrorAction SilentlyContinue | ForEach-Object { Get-Content $_.FullName -Tail 60 }
 }
