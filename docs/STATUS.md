@@ -5,7 +5,7 @@
 | M0 Temelj | završeno 13.11.2026. | GitHub Actions (Windows Server 2025, .NET 10): build, 31 test (5 Core, 26 arhitektonskih), smoke pokretanje svih 5 programa. Nije pokrenuto na mini PC-ju. |
 | M1 Audio jezgro | **zatvorena 13.11.2026. po odluci vlasnika, sa otvorenim stavkama** | Automatski testovi prošli; stvarni zvuk prošao na računaru vlasnika. Otvoreno (prenosi se dalje): ponovno povezivanje na pravom uređaju i Bluetooth (T-BT) nepokrenuti; fiksna sistemska glasnoća; OGG Opus; rezervni FLAC dekoder; ništa nije pokrenuto na mini PC-ju; duža proba nije rađena; režim „slab računar“ preskočen. |
 | M2 Logika | **završena 13.11.2026.** | GitHub Actions: 93 testa logike prošla. Kriterijum iz specifikacije (T-SCH, T-ROT, T-LIC, T-VOI-03) ispunjen na nivou čiste logike; povezivanje sa bazom i engine-om dolazi u M3. |
-| M3 Engine i baza | u toku | vidi „M3 po koracima“ |
+| M3 Engine i baza | **završena 14.11.2026. (logika)**, sa otvorenim stavkama | GitHub Actions: 279 testova prošlo. Radio svira po rasporedu iz baze (proba vlasnika 14.11.). Otvoreno: veza sa interfejsom nije probana sa pravim interfejsom (ne postoji do M5); nastavak posle restarta i pauza nisu probani slušanjem; rezervni nivoi 4 i 6 (keširana lista, folder „Rezerva“) dolaze u M11; biranje pesama unapred. |
 | M4–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
@@ -107,7 +107,7 @@ Napomene uz korak 1:
 |---|---|---|
 | 1. Baza (SQLite, WAL), skladišta, kopija i provera; skener biblioteke | završeno 13.11.2026. | GitHub Actions: 12 testova baze + 14 testova skenera prošlo (ukupno 217). |
 | 2. Radio koji sam svira: indeksiranje foldera, reditelj (raspored + rotacija + kapija licenci), stišavanje na zatvaranju, snimak stanja i nastavak, dugme Next | **logika završena 13.11.2026.; sa pravim uređajem nepokrenuto** | GitHub Actions: 14 testova celog lanca bez uređaja (vreme teče sa zvukom). Čeka probu vlasnika (LustreRadio-Proba). |
-| 3. Komunikacija sa interfejsom (IPC), minimalan unos licence | nije započeto | – |
+| 3. Veza interfejsa i audio procesa (lokalni kanal), komande, PIN i admin sesije, pauza, glasnoća | završeno 14.11.2026. | GitHub Actions: 11 testova kanala (T-IPC-01, 02, 03, 04, 07), 9 testova komandi (T-IPC-05), 5 testova PIN-a, 6 testova pauze i glasnoće. T-IPC-06 (drugi nalog, mreža) nije automatizovan: oslanja se na Windows (CurrentUserOnly). |
 
 Napomene uz korak 1:
 - Raspored i pravila se čuvaju kao JSON u tabeli `settings`, ne u posebnim tabelama (jednostavnije; ponašanje je isto). Provereno: raspored posle čuvanja daje iste odgovore.
@@ -147,3 +147,12 @@ Windows 11, slušalice HyperX (48 kHz), 5 MP3 pesama, verzija sa izjavom o kolek
 - **Nije probano:** nastavak iste pesme posle ponovnog pokretanja (u dnevniku je samo jedno pokretanje); izvlačenje slušalica.
 - **Nađena greška:** pesme su išle abecednim redom. Uzrok: pesme bez žanra u oznakama su na nivou „bilo koja“, a tamo izbor nije bio nasumičan. Ispravljeno 14.11. (dva nova testa; GitHub Actions, 241 test prošao). Ispravka još nije potvrđena slušanjem.
 - Dodato: kad fajl nema žanr u oznakama, žanr je naziv podfoldera (npr. `muzika\Deep House\...`).
+
+Napomene uz M3 korak 3:
+- Svaka poruka stanja nosi celo stanje (nema delimičnih izmena): jednostavnije i otporno na izgubljenu poruku.
+- Klijent koji ne čita poruke isključuje se kad mu se red napuni (256 poruka); slanje nikad ne čeka (test: 20.000 poruka za manje od 5 s).
+- Ista komanda (isti ID) izvršava se jednom; najviše 50 komandi u sekundi po klijentu.
+- PIN proverava audio proces; prvo postavljanje PIN-a je slobodno, svaka promena traži admin sesiju. Kod za oporavak PIN-a još nije urađen.
+- Pauza se sama prekida posle 15 minuta; ako radno vreme istekne tokom pauze, emitovanje se završava.
+- Test pauze je otkrio pravu grešku: zbog zaokruživanja izvor je čitan još jednom posle stišavanja, pa bi muzika pri nastavku bila pomerena za jedan blok. Ispravljeno.
+- Komande za raspored, licence, mikseve i glas dodaju se kad nastanu odgovarajući ekrani.
