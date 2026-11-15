@@ -107,7 +107,7 @@ Automatska prijava naloga „LustreRadio“ (standardni, ne administratorski)
 
 - **Jedna instanca:** tri imenovana mutex-a (`Global\LustreRadio.Watchdog`, `.Engine`, `.UI`). Windows ih sam oslobađa kad proces umre. Drugi start UI-ja samo pošalje postojećem „prikaži se“ i zatvori se.
 - **Watchdog ne vezuje život Engine-a za svoj.** Ako Watchdog padne, Engine nastavlja da svira. Novi Watchdog **preuzima** postojeće programe (prepoznaje ih po mutex-u i vezi) i ne pokreće nove.
-- **Signal života:** Watchdog na svake 2 s pita Engine za stanje (svira / pauzirano / mirovanje) i brojač puštenih uzoraka; provere idu po fiksnom rasporedu, bez obzira koliko je prethodna trajala. Kvar je: nema odgovora 20 s **i** najmanje 5 uzastopnih neuspelih provera, ili stanje „svira“ a brojač stoji 15 s. Pauza i mirovanje nisu kvar. Vreme tokom kog sam Watchdog nije radio (zauzet računar, buđenje) ne računa se kao ćutanje Engine-a. Sva vremena mere se monotonim satom. *(Izmenjeno 15.11.2026., odluka O1; ranije: signal na 5 s, kvar posle 30 s.)*
+- **Signal života:** Watchdog na svake 2 s pita Engine za stanje (svira / pauzirano / mirovanje) i brojač puštenih uzoraka; provere idu po fiksnom rasporedu, bez obzira koliko je prethodna trajala. Kvar je: nema odgovora 20 s **i** najmanje 5 uzastopnih neuspelih provera, ili stanje „svira“ a brojač stoji 15 s. Pauza i mirovanje nisu kvar. Prvi odgovor posle pokretanja Engine-a čeka se do 60 s (privremena vrednost, odluka 15.11.2026.; menja se kad bude rezultata). Vreme tokom kog sam Watchdog nije radio (zauzet računar, buđenje) ne računa se kao ćutanje Engine-a. Sva vremena mere se monotonim satom. *(Izmenjeno 15.11.2026., odluka O1; ranije: signal na 5 s, kvar posle 30 s.)*
 - **Oporavak Engine-a:** prekid procesa → čekanje da se mutex oslobodi (do 10 s) → start. Pauza od 3 s pre starta važi samo posle pada Engine-a, ne posle prekidanja zamrznutog procesa *(izmenjeno 15.11.2026.)*. Engine nastavlja iz snimka stanja (ista pesma, pozicija, fade-in 3 s).
 - 3 pada Engine-a za 10 min → **sigurni režim** (samo rezervna reprodukcija, bez analize i skeniranja); pokušaj punog režima na 60 s.
 - **UI:** pad → novi start posle 5 s; ne odgovara 30 s → prekid i novi start; 5 padova za 10 min → pokušaj na 5 min. Muzika se pri tome ne dira.
@@ -124,8 +124,8 @@ Automatska prijava naloga „LustreRadio“ (standardni, ne administratorski)
 - Dva decka za muziku + treći ulaz za glasovne poruke → mixer → limiter → izlaz.
 - Izlaz je apstrakcija (`IAudioSink`): **WASAPI** (stvarni uređaj) ili **WAV fajl** (offline renderer za testove, brže od realnog vremena).
 - Interni format float 32-bit stereo; sample rate prati uređaj. Preporuka: uređaj na 44,1 kHz, jer je većina muzike takva, pa nema resamplinga [P].
-- Pesme se čitaju u malim delovima (ring buffer ~2 s po decku). **Cela pesma se nikad ne učitava u memoriju** [Č: 5 min dekodiranog zvuka ≈ 100+ MB].
-- Dekodiranje radi posebna nit, nikad audio callback. Bez alokacija memorije u audio putanji.
+- Pesme se čitaju u malim delovima (bafer od **5 s** po decku; odluka 15.11.2026., ranije „~2 s“). **Cela pesma se nikad ne učitava u memoriju** [Č: 5 min dekodiranog zvuka ≈ 100+ MB].
+- Dekodiranje radi posebna nit, nikad audio callback. Bez alokacija memorije u audio putanji. **Audio-nit ne čita fajlove, ne dekodira, ne pristupa bazi, ne piše dnevnik, ne čeka brave i ne radi ništa što može da blokira** (odluka 15.11.2026.).
 - Početak sledeće pesme (~20 s) dekodira se unapred u mali bafer.
 - WASAPI shared, bafer 200 ms. Audio nit sa MMCSS prioritetom „Pro Audio“.
 - Čuvar tišine: ako izlaz ćuti duže od 3 s dok bi muzika trebalo da svira → sledeća pesma → rezervni nivoi (deo 10).
@@ -482,7 +482,7 @@ Svi rezervni putevi sadrže samo proverene stavke (D10): lista i folder nose he�
 | Biblioteka | `tracks`, `track_decode_status`, `track_analysis`, `analysis_confidence`, `genres`, `track_genres` |
 | Miksevi | `mixes`, `mix_rules`, `mix_tracks` |
 | Raspored | `schedule_slots`, `schedule_exceptions`, `overrides` |
-| Rotacija | `play_history` |
+| Rotacija | `play_history` (od šeme 2: jedinstveni ID događaja); uz bazu fajl `emitovanje.jsonl` (odluka 15.11.2026., vidi deo 27) |
 | Prelazi | `prepared_transitions` |
 | Licence | `licenses`, `license_proofs`, `license_audit` |
 | Glas | `voices`, `voice_messages`, `voice_message_versions`, `voice_licenses`, `voice_rules`, `voice_play_history`, `pronunciation_dictionary` |
@@ -831,6 +831,37 @@ Obavezna pravila iz iste odluke:
 - Izveštaji o testovima razdvajaju: GitHub, glavni računar vlasnika, mini PC u lokalu.
 - M7 ne počinje dok planer, pisar, audio-nit i potrebni koraci M6 nisu dokazano završeni. Svaka faza se pregleda i prihvata pre sledeće.
 - `Microsoft.Data.Sqlite` je na liniji 10.0.x (deo 17).
+
+**Odluke vlasnika 15.11.2026. uveče (prihvatanje faze A):**
+
+*Politika testiranja (menja deo 19 i kriterijume iz dela 18 koji traže mini PC):*
+
+| Oznaka | Mesto | Pravilo |
+|---|---|---|
+| **G** | GitHub Actions, Windows Server 2025 | obavezni automatski testovi |
+| **R** | glavni računar vlasnika | testovi kada su potrebni i kada vlasnik može da ih izvrši |
+| **M** | mini PC u Caffe Lustreu | fizički testovi se **ne zahtevaju**; status je uvek `NOT TESTED – ACCEPTED RISK` |
+
+- Fizičko testiranje na mini PC-ju nije više uslov za nastavak razvoja. Vlasnik prihvata taj rizik.
+- Test na M se nikad ne prikazuje kao prošao ako nije izvršen.
+- Program se i dalje pravi i optimizuje za stvarni mini PC: Celeron N4000 (2 jezgra / 2 niti), 4 GB RAM, SATA SSD, UHD 600, Windows 11 Home, Bluetooth zvučnik, monitor na dodir.
+- Umesto fizičkih testova prave se što realističnije simulacije: sporiji procesor, ograničena memorija, sporiji disk, opterećen sistem, prekidi audio uređaja. **Simulacija ne zamenjuje fizički test i nikad se ne prikazuje kao test na hardveru.**
+- Testovi se ne preskaču zato što je testiranje na mini PC-ju ukinuto.
+
+*Tehničke odluke:*
+
+| Odluka | Vrednost |
+|---|---|
+| Prvo javljanje Engine-a posle pokretanja | rok 60 s (privremeno; deo 2.2) |
+| Nadzor posle prvog odgovora | po usvojenoj logici (2 s / 20 s / 5 provera); cilj oporavka do 30 s |
+| Istorija reprodukcije | dnevnik `emitovanje.jsonl` sa jedinstvenim ID-jem događaja; nadogradnja baze sa šeme 1 na šemu 2 |
+| Zahtevi za dnevnik | potvrda stvarnog upisa na disk; zaštita od dupliranja; oporavak posle prekida; obrada poslednjeg nepotpunog reda; rotacija i arhiviranje; upozorenje ako disk nije dostupan ili je pun |
+| Bafer po decku | 5 s (deo 2.3) |
+| Audio-nit | ne čita fajlove, ne dekodira, ne pristupa bazi, ne piše dnevnik, ne čeka brave, ne blokira (deo 2.3) |
+| M6.3, slušna provera | najmanje 32 od 40 tačnih procena; 0 pogrešnih na teškim numerama; 0 slučajeva gde je čujan sadržaj proglašen tišinom |
+| M6.3 i Smart Crossfade | prolaz M6.3 ne znači da je Smart Crossfade spreman; to odlučuje poseban test u M7 |
+
+*Redosled:* faza A je prihvaćena i spojena u `main`. Faza B počinje tek posle odobrenja njenog plana. Faze C–F ne počinju pre toga.
 
 **Još otvoreno:** koji POS program, da li je preko celog ekrana i da li koristi zvuk; AUX ulaz na zvučniku; memorija u mirovanju i „Slots used“; slobodan disk; drugi programi na mini PC-ju; BIOS opcija za struju; model monitora; izlaz za preslušavanje; poseban Windows nalog.
 

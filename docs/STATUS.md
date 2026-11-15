@@ -9,9 +9,23 @@
 | M4 Nadzor i pokretanje | **automatski deo završen 14.11.2026.**; proba na pravom računaru nije rađena | GitHub Actions: 297 testova + integracioni test sa pravim procesima. Otvoreno: pokretanje posle prijave/paljenja računara, odbijanje sesije 0 kod pravog servisa, „zvuk stoji“ sa pravim zvukom, sigurni režim u radu, rad 72 h na mini PC-ju. |
 | M5 Interfejs | **prvi deo završen; vlasnik probao 15.11.2026. na svom računaru** | GitHub Actions: 412 testova, ekrani nacrtani i provereni. Proba vlasnika (miš, slušalice): radi. Otvoreno: monitor na dodir (T-TCH), mini PC, kod za oporavak PIN-a, dnevnik izmena, omot albuma, sledeća pesma, „Mirnije/Življe“. |
 | M6 Analiza | **u toku: glasnoća (LUFS) gotova 15.11.2026.** | GitHub Actions: 433 testa. Sledeće: tišina na krajevima, outro/intro, BPM, tonalitet, vokal. |
+| Faza A pre M7 (SQLite, nadzor, probne promenljive) | **završena na G 15.11.2026.; spojena u `main`** | GitHub Actions: 518 testova + integracioni test sa tvrdim rokovima. R: nije testirano. M: NOT TESTED – ACCEPTED RISK. |
+| Faza B pre M7 (planer, pisar, audio-nit) | plan čeka odobrenje | `claude/LUSTRE_RADIO_Faza_B_plan.md` |
 | M7–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
+
+## Politika testiranja (odluka vlasnika 15.11.2026.)
+
+| Oznaka | Mesto | Pravilo |
+|---|---|---|
+| **G** | GitHub Actions, Windows Server 2025, bez zvučnog uređaja | obavezni automatski testovi |
+| **R** | glavni računar vlasnika (Windows 11, Ryzen 9 5900X, slušalice) | kada su potrebni i kada vlasnik može |
+| **M** | mini PC u Caffe Lustreu | ne testira se; status je uvek `NOT TESTED – ACCEPTED RISK` |
+
+- Test na M se nikad ne upisuje kao prošao.
+- Simulacija (sporiji procesor, manje memorije, spor disk, opterećenje, prekid uređaja) se upisuje kao „G, simulacija“ ili „R, simulacija“. Nije test na hardveru i ne popunjava kolonu M.
+- U starijim delovima ovog dokumenta (M0–M6) „nije probano na mini PC-ju“ znači isto: `NOT TESTED – ACCEPTED RISK`.
 
 ## M1 po koracima
 
@@ -251,7 +265,11 @@ Odstupanje od plana: merenje glasnoće ide u prolazu skeniranja (tokom rada), a 
 
 Poznato ograničenje: fajl koji je sav tišina ostaje bez glasnoće i ponovo se proverava pri svakom skeniranju.
 
-## Faza A pre M7 (15.11.2026.) – ČEKA PREGLED VLASNIKA; nije spojena u `main`
+## Faza A pre M7 (15.11.2026.) – ZAVRŠENA NA G; prihvaćena i spojena u `main`
+
+Prihvatio vlasnik 15.11.2026. Spajanje: izmena `8123775` (grana `faza-a`, poslednja izmena `0a7f0fb`). Stabilna tačka za vraćanje: oznaka `stabilno-faza-a`.
+
+**Šta „završena na G“ znači:** svi automatski testovi su izvršeni i prošli na GitHub Actions. Na glavnom računaru vlasnika (R) ništa iz faze A nije testirano. Na mini PC-ju (M) se ne testira: `NOT TESTED – ACCEPTED RISK`.
 
 Grana `faza-a`. Plan: `claude/LUSTRE_RADIO_Pre-M7_tehnicka_revizija.md`. Izveštaj: `claude/LUSTRE_RADIO_Faza_A_izvestaj.md`.
 
@@ -260,25 +278,25 @@ Gde je šta provereno: **G** = GitHub Actions (Windows Server 2025, 4 procesora,
 | Stavka | G | R | M |
 |---|---|---|---|
 | `Microsoft.Data.Sqlite` 10.0.15 → `SQLitePCLRaw.lib.e_sqlite3` 2.1.13 (lanac ispisan komandom) | prošao | – | – |
-| SQLite u objavljenom fajlu `e_sqlite3.dll`: 3.53.3 (ranjive su < 3.50.2) | prošao | nije rađeno | nije rađeno |
-| SQLite koji učita objavljeni Engine: 3.53.3 | prošao | nije rađeno | nije rađeno |
+| SQLite u objavljenom fajlu `e_sqlite3.dll`: 3.53.3 (ranjive su < 3.50.2) | prošao | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
+| SQLite koji učita objavljeni Engine: 3.53.3 | prošao | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
 | Ranjivosti NU1901–NU1904 obaraju build (proba sa starim paketom: build pao) | prošao | – | – |
-| Baza iz prethodne verzije (SQLite 3.46.1) otvara se nepromenjena i upisiva je | prošao (probna baza) | **nije rađeno** (prava baza vlasnika) | nije rađeno |
-| Zamrznut Engine: otkrivanje ≤ 30,0 s, tri puta zaredom | prošao: 19,8–20,2 s | nije rađeno | nije rađeno |
-| Zamrznut Engine: novi proces ≤ 35,0 s | prošao: 19,9–20,4 s | nije rađeno | nije rađeno |
+| Baza iz prethodne verzije (SQLite 3.46.1) otvara se nepromenjena i upisiva je | prošao (probna baza) | NIJE TESTIRANO (prava baza vlasnika) | NOT TESTED – ACCEPTED RISK |
+| Zamrznut Engine: otkrivanje ≤ 30,0 s, tri puta zaredom | prošao: 19,8–20,2 s | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
+| Zamrznut Engine: novi proces ≤ 35,0 s | prošao: 19,9–20,4 s | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
 | Isti test sa starim vrednostima (5 s / 30 s) pada | prošao (pao kako treba: 34,2 s) | – | – |
-| Zamrzavanje od 10 s nije kvar | prošao | nije rađeno | nije rađeno |
-| Opterećen računar 45 s (12 petlji na 4 procesora) nije kvar | prošao | nije rađeno | **nije rađeno** (ovde je najvažnije) |
-| Buđenje računara / zastoj samog nadzora nije kvar | prošao **samo kao simulacija** (lažni sat) | **nije rađeno** | nije rađeno |
-| Ubijen Engine se vraća ≤ 15 s (T-WD-01) | prošao: 0,9 s (novi proces; bez zvuka) | nije rađeno ovom verzijom | nije rađeno |
-| 20 pokretanja × Engine, nadzor, interfejs: uvek 1+1+1 (T-WD-03) | prošao | nije rađeno | nije rađeno |
-| Ubijen interfejs ne dira Engine (deo T-WD-04) | prošao | zatvaranje prozora: prošao 15.11. (starija verzija) | nije rađeno |
-| Sigurni režim: Engine stvarno pokrenut sa `--safe` posle 3 prekida | prošao | nije rađeno | nije rađeno |
+| Zamrzavanje od 10 s nije kvar | prošao | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
+| Opterećen računar 45 s (12 petlji na 4 procesora) nije kvar | prošao | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
+| Buđenje računara / zastoj samog nadzora nije kvar | prošao **samo kao simulacija** (lažni sat) | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
+| Ubijen Engine se vraća ≤ 15 s (T-WD-01) | prošao: 0,9 s (novi proces; bez zvuka) | NIJE TESTIRANO ovom verzijom | NOT TESTED – ACCEPTED RISK |
+| 20 pokretanja × Engine, nadzor, interfejs: uvek 1+1+1 (T-WD-03) | prošao | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
+| Ubijen interfejs ne dira Engine (deo T-WD-04) | prošao | zatvaranje prozora: prošao 15.11. (starija verzija) | NOT TESTED – ACCEPTED RISK |
+| Sigurni režim: Engine stvarno pokrenut sa `--safe` posle 3 prekida | prošao | NIJE TESTIRANO | NOT TESTED – ACCEPTED RISK |
 | `LUSTRE_TEST_ALLOW_SESSION0` i `LUSTRE_DATA_ROOT` uklonjene; postavljene promenljive nemaju dejstva | prošao | – | – |
 | U objavljenom paketu nema teksta `LUSTRE_TEST_`, `LUSTRE_DATA_ROOT`, `ALLOW_SESSION0` | prošao (33 naša fajla) | – | – |
 | Nijedan naš program ne čita promenljive okruženja (arhitektonski test) | prošao (15 projekata) | – | – |
 
-Dokaz: pokretanje 43738170393 (izmena `4520661`), 518 testova, svi prošli. Probe sa namernim kvarom, grana `proba-pravila`: 43738844042 (stari paket → `error NU1903`), 43738937377 (stare vrednosti nadzora → „T-WD-02 PAO: 34,2 s“).
+Dokaz: pokretanje 43760947591 (izmena `0a7f0fb`), 518 testova, svi prošli; isto i 43738170393 i 43759825081. Probe sa namernim kvarom, grana `proba-pravila`: 43738844042 (stari paket → `error NU1903`), 43738937377 (stare vrednosti nadzora → „T-WD-02 PAO: 34,2 s“).
 
 Nalazi tokom rada:
 - Red `WarningsNotAsErrors NU1901–NU1904` u `Directory.Build.props` dodat je još u M0 (13.11.). Zbog njega upozorenje o ranjivosti nije obaralo build kad je SQLite dodat u M3. Uklonjen.
@@ -286,4 +304,8 @@ Nalazi tokom rada:
 - GitHub računar radi u sesiji 2, ne 0; prekidač za sesiju 0 nije bio potreban.
 - Kad se isti program pokrene dok već radi, drugi primerak piše u poseban fajl dnevnika (`engine-…_001.log`). Nije greška, ali dnevnik jednog dana može biti u više fajlova.
 
-Čeka odobrenje (nije u odluci O1): prvi odgovor Engine-a posle pokretanja čeka se do 60 s pre nego što se proglasi kvar (umesto 20 s), jer pokretanje na sporom računaru može da traje. U kodu je na grani `faza-a`; u specifikaciju nije upisano.
+Odobreno 15.11.2026. uveče: prvi odgovor Engine-a posle pokretanja čeka se do 60 s (privremena vrednost). Upisano u specifikaciju, deo 2.2.
+
+Otvoreno na R (kada vlasnik može): novi paket preko postojeće baze; kraj procesa Engine-a u Task Manager-u; uspavljivanje i buđenje računara dok svira; sat vremena rada bez reda „ne odgovara“ u dnevniku nadzora. Opis: `claude/LUSTRE_RADIO_Faza_A_izvestaj.md`, odeljak 7.
+
+Šta faza A NE dokazuje: da se muzika čuje posle oporavka (na G nema zvuka); da granica od 20 s ne pravi lažna prekidanja na sporom i zauzetom računaru; da buđenje pravog računara ne zbuni nadzor (testirano samo kao simulacija); da prava baza vlasnika radi sa novim SQLite-om (probna radi).
