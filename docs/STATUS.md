@@ -7,8 +7,9 @@
 | M2 Logika | **završena 13.11.2026.** | GitHub Actions: 93 testa logike prošla. Kriterijum iz specifikacije (T-SCH, T-ROT, T-LIC, T-VOI-03) ispunjen na nivou čiste logike; povezivanje sa bazom i engine-om dolazi u M3. |
 | M3 Engine i baza | **završena 14.11.2026. (logika)**, sa otvorenim stavkama | GitHub Actions: 279 testova prošlo. Radio svira po rasporedu iz baze (proba vlasnika 14.11.). Otvoreno: veza sa interfejsom nije probana sa pravim interfejsom (ne postoji do M5); nastavak posle restarta i pauza nisu probani slušanjem; rezervni nivoi 4 i 6 (keširana lista, folder „Rezerva“) dolaze u M11; biranje pesama unapred. |
 | M4 Nadzor i pokretanje | **automatski deo završen 14.11.2026.**; proba na pravom računaru nije rađena | GitHub Actions: 297 testova + integracioni test sa pravim procesima. Otvoreno: pokretanje posle prijave/paljenja računara, odbijanje sesije 0 kod pravog servisa, „zvuk stoji“ sa pravim zvukom, sigurni režim u radu, rad 72 h na mini PC-ju. |
-| M5 Interfejs | **prvi deo napisan 14.11.2026.; nije probano rukom** | GitHub Actions: 412 testova; svi ekrani nacrtani u dve veličine i automatski provereni (kontrole ≥ 56 px, staju na ekran). Otvoreno: proba mišem i prstom, monitor na dodir (T-TCH), kod za oporavak PIN-a, dnevnik izmena, omot albuma, sledeća pesma, „Mirnije/Življe“. |
-| M6–M12 | nije započeto | – |
+| M5 Interfejs | **prvi deo završen; vlasnik probao 15.11.2026. na svom računaru** | GitHub Actions: 412 testova, ekrani nacrtani i provereni. Proba vlasnika (miš, slušalice): radi. Otvoreno: monitor na dodir (T-TCH), mini PC, kod za oporavak PIN-a, dnevnik izmena, omot albuma, sledeća pesma, „Mirnije/Življe“. |
+| M6 Analiza | **u toku: glasnoća (LUFS) gotova 15.11.2026.** | GitHub Actions: 433 testa. Sledeće: tišina na krajevima, outro/intro, BPM, tonalitet, vokal. |
+| M7–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
 
@@ -213,3 +214,39 @@ Izmene u audio procesu uz ovaj korak: stanje sada nosi vreme gašenja/otvaranja,
 Odstupanje: ekrani su pisani u C# kodu, ne u XAML-u (bez razvojnog računara greške u XAML-u bi se videle tek pri pokretanju).
 
 Paket za probu: artefakt `LustreRadio` (audio proces + nadzor + interfejs, `POKRENI.cmd`, `ZAUSTAVI.cmd`, `UPUTSTVO.txt`).
+
+## Proba vlasnika 15.11.2026. (njegov računar, Windows 11, slušalice HyperX 48 kHz, miš)
+
+Paket `LustreRadio` sa GitHub-a (M5). Izvor: dnevnici `engine-20261114.log`, `engine-20261115.log`, `watchdog-20261115.log` i izjava vlasnika.
+
+| Stavka | Stanje | Dokaz |
+|---|---|---|
+| Postavljanje PIN-a, dodavanje foldera, izjava o licenci | prošao | dnevnik 14.11. 23:53: 5 pesama dodato, 5 potvrđeno po izjavi |
+| Van radnog vremena muzika ne kreće | prošao | 14.11. pokrenuto u 23:50, nema emitovanja |
+| Nadzor pali audio proces; muzika kreće sama u radno vreme | prošao | 15.11. 16:39:50 pokretanje, 16:39:54 „Počinje emitovanje“, termin „Nedelja – popodne“ |
+| Namerno zaustavljanje (`ZAUSTAVI.cmd`) | prošao | dnevnik nadzora 16:44:52 |
+| Pauza, Sledeća, glasnoća | prošao po izjavi vlasnika („sve radi kako treba“) | komande tada nisu beležene u dnevnik |
+| Zatvaranje prozora ne prekida muziku | prošao po izjavi vlasnika | – |
+| Monitor na dodir, mini PC, Bluetooth zvučnik | **nije probano** | – |
+
+Posle ove probe audio proces beleži komande sa ekrana u dnevnik (bez PIN-a), da sledeće probe budu proverljive iz dnevnika.
+
+## M6: analiza, korak 1 – glasnoća (15.11.2026.)
+
+Dokaz: GitHub Actions, Windows Server 2025, 15.11.2026., pokretanje 43732101731, 433 testa.
+
+| Stavka | Stanje |
+|---|---|
+| Merenje glasnoće po ITU-R BS.1770-4 (K-filter, blokovi 400 ms, pragovi −70 LUFS i −10 LU), bilo koji sample rate | prošao (GitHub) |
+| Signali po opisu EBU Tech 3341, slučajevi 1–5 (napravljeni u testu; nisu zvanični EBU fajlovi) | prošao: svi unutar ±0,1 LU |
+| Koeficijenti filtera na 48 kHz jednaki onima iz standarda | prošao (9 decimala) |
+| Poznat signal kroz pravi dekoder (WAV, sinus −20 dBFS) | prošao: izmereno −19,99 LUFS na 44,1 i 48 kHz |
+| Isti zvuk u raznim formatima (FLAC, OGG, AAC, M4A, MP3 VBR) | izmereno −5,95 do −6,02 LUFS; MP3 CBR −6,47 |
+| Prag „±0,5 LU na muzici“ (spec. 6.3) | **nije mereno** – nema referentnih muzičkih fajlova sa poznatom vrednošću |
+| Glasnoća se meri pri skeniranju (isti prolaz kao vrh); ranije skenirane pesme se mere pri sledećem skeniranju | prošao (GitHub) |
+| Pojačanje po pesmi koristi izmerenu glasnoću (cilj −18 LUFS, najviše +6 dB, vrh do −1 dBFS) | pravilo: prošao ranije (M2); sa izmerenim vrednostima **nije preslušano** |
+| Analyzer.exe meri glasnoću i vrh fajlova | prošao (GitHub, 10 fajlova) |
+
+Odstupanje od plana: merenje glasnoće ide u prolazu skeniranja (tokom rada), a ne posle 23:30. Razlog: fajl se pri skeniranju ionako ceo dekodira, a merenje dodaje samo dva mala filtera po uzorku. Koliko to opterećuje mini PC **nije mereno**.
+
+Poznato ograničenje: fajl koji je sav tišina ostaje bez glasnoće i ponovo se proverava pri svakom skeniranju.
