@@ -152,7 +152,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
         if (_options.PipeName is not null)
         {
             var sessions = new AdminSessions(_monotonic, () => Database.Settings.Get(RadioCommandHandler.PinKey));
-            _server = new IpcServer(_options.PipeName, new RadioCommandHandler(this, Database, sessions), _log);
+            _server = new IpcServer(_options.PipeName, new RadioCommandHandler(this, Database, sessions, _log), _log);
             _server.Start();
             _log("Veza za interfejs: " + _options.PipeName);
         }

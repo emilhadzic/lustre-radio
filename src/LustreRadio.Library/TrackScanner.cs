@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using LustreRadio.Analysis;
 using LustreRadio.Audio;
 
 namespace LustreRadio.Library;
@@ -36,6 +37,9 @@ public sealed record ScannedFile
     /// <summary>Najvisi vrh u dBFS.</summary>
     public double? PeakDbfs { get; init; }
 
+    /// <summary>Glasnoca programa (BS.1770) u LUFS; null za tisinu ili zvuk kraci od 400 ms.</summary>
+    public double? Lufs { get; init; }
+
     public string Title { get; init; } = string.Empty;
 
     public string Artist { get; init; } = string.Empty;
@@ -46,7 +50,7 @@ public sealed record ScannedFile
 }
 
 /// <summary>
-/// Skenira jedan fajl: hes, oznake, probno dekodiranje celog fajla (tacna duzina i vrh).
+/// Skenira jedan fajl: hes, oznake, probno dekodiranje celog fajla (tacna duzina, vrh i glasnoca).
 /// Nikad ne baca gresku zbog loseg fajla: rezultat tada ima DecodeOk = false i opis greske.
 /// Fajl se samo cita; nista se ne menja niti premesta.
 /// </summary>
@@ -126,10 +130,12 @@ public static class TrackScanner
             var buffer = new float[8192];
             long frames = 0;
             var peak = 0f;
+            var loudness = new LoudnessMeter(sourceRate);
             int read;
             while ((read = source.Read(buffer)) > 0)
             {
                 frames += read;
+                loudness.Add(buffer.AsSpan(0, read * 2));
                 foreach (var sample in buffer.AsSpan(0, read * 2))
                 {
                     var magnitude = Math.Abs(sample);
@@ -154,6 +160,7 @@ public static class TrackScanner
                 ExactFrames = frames,
                 DurationSeconds = frames / (double)sourceRate,
                 PeakDbfs = peak > 0 ? 20 * Math.Log10(peak) : null,
+                Lufs = loudness.IntegratedLufs(),
             };
         }
         catch (Exception ex)

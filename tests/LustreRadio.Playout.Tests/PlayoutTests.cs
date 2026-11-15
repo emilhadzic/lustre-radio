@@ -40,6 +40,30 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
     }
 
     [Fact]
+    public void Index_MeasuresLoudness_AndCatchesUpOnTracksScannedBefore()
+    {
+        _env.AddTone(300, 2);
+        _env.AddTone(400, 2);
+        _env.Index();
+
+        // glasnoca je izmerena vec pri prvom skeniranju
+        var tracks = _env.Db.Tracks.GetAll();
+        Assert.Equal(2, tracks.Count);
+        Assert.All(tracks, t => Assert.InRange(t.Lufs!.Value, -40.0, 0.0));
+
+        // pesme skenirane starijom verzijom (bez glasnoce) mere se naknadno, bez izmene fajla
+        _env.Db.Tracks.SetLoudness(tracks[0].Id, null);
+        _env.Db.Tracks.SetFavorite(tracks[0].Id, true);
+        var again = _env.Index();
+        Assert.Equal(1, again.LoudnessMeasured);
+        Assert.Equal(0, again.Added + again.Rescanned);
+        var remeasured = _env.Db.Tracks.Get(tracks[0].Id)!;
+        Assert.Equal(tracks[0].Lufs!.Value, remeasured.Lufs!.Value, 6);
+        Assert.True(remeasured.Favorite);
+        Assert.Equal(0, _env.Index().LoudnessMeasured);
+    }
+
+    [Fact]
     public void Indexer_AddsTracks_AsUnverified_AndFollowsChangesOnDisk()
     {
         _env.AddTone(300, 2);

@@ -31,7 +31,7 @@ public sealed class ScannerTests(ITestOutputHelper output) : IDisposable
     public void Scan_MeasuresRealFile(string file, AudioKind kind, int rate, int channels, long exactFrames)
     {
         var scanned = TrackScanner.Scan(Fixture(file));
-        output.WriteLine($"{file}: ok={scanned.DecodeOk} dekoder={scanned.DecoderId} frejmova={scanned.ExactFrames} trajanje={scanned.DurationSeconds:F3}s vrh={scanned.PeakDbfs:F2} dBFS");
+        output.WriteLine($"{file}: ok={scanned.DecodeOk} dekoder={scanned.DecoderId} frejmova={scanned.ExactFrames} trajanje={scanned.DurationSeconds:F3}s vrh={scanned.PeakDbfs:F2} dBFS glasnoca={scanned.Lufs:F2} LUFS");
 
         Assert.True(scanned.DecodeOk, scanned.DecodeError);
         Assert.Equal(kind, scanned.Kind);
@@ -43,9 +43,58 @@ public sealed class ScannerTests(ITestOutputHelper output) : IDisposable
         // Signal ima amplitudu 0,5 = -6 dBFS. Kompresovani formati vracaju nesto vise vrhove
         // (izmereno: AAC do -2,8 dBFS); zato se vrh meri na dekodiranom zvuku, a ne pretpostavlja.
         Assert.InRange(scanned.PeakDbfs!.Value, -7.0, -2.0);
+        // Glasnoca se meri na istom dekodiranom zvuku; ton amplitude 0,5 mora biti u razumnom opsegu.
+        Assert.InRange(scanned.Lufs!.Value, -20.0, -4.0);
         if (exactFrames > 0)
         {
             Assert.Equal(exactFrames, scanned.ExactFrames);
+        }
+    }
+
+    [Theory]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void Scan_MeasuresLoudnessOfKnownSignal_ThroughTheRealDecoder(int rate)
+    {
+        // sinus 1000 Hz, -20 dBFS, stereo, 10 s, 16-bitni WAV -> po BS.1770 tacno -20,0 LUFS
+        var path = Path.Combine(Path.GetTempPath(), $"lustre-lufs-{rate}-{Guid.NewGuid():N}.wav");
+        try
+        {
+            var frames = rate * 10;
+            using (var writer = new BinaryWriter(File.Create(path)))
+            {
+                writer.Write("RIFF"u8);
+                writer.Write(36 + (frames * 4));
+                writer.Write("WAVEfmt "u8);
+                writer.Write(16);
+                writer.Write((short)1);
+                writer.Write((short)2);
+                writer.Write(rate);
+                writer.Write(rate * 4);
+                writer.Write((short)4);
+                writer.Write((short)16);
+                writer.Write("data"u8);
+                writer.Write(frames * 4);
+                var amplitude = Math.Pow(10, -20 / 20.0) * 32767;
+                for (var i = 0; i < frames; i++)
+                {
+                    var sample = (short)Math.Round(amplitude * Math.Sin(2 * Math.PI * 1000 * i / rate));
+                    writer.Write(sample);
+                    writer.Write(sample);
+                }
+            }
+
+            var scanned = TrackScanner.Scan(path);
+            output.WriteLine($"{rate} Hz: glasnoca={scanned.Lufs:F3} LUFS vrh={scanned.PeakDbfs:F3} dBFS");
+
+            Assert.True(scanned.DecodeOk, scanned.DecodeError);
+            Assert.Equal(frames, scanned.ExactFrames);
+            Assert.Equal(-20.0, scanned.Lufs!.Value, 0.1);
+            Assert.Equal(-20.0, scanned.PeakDbfs!.Value, 0.1);
+        }
+        finally
+        {
+            File.Delete(path);
         }
     }
 

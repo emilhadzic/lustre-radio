@@ -5,6 +5,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LustreRadio.Core\LustreRadio.Core.csproj" />
     <ProjectReference Include="..\LustreRadio.Audio\LustreRadio.Audio.csproj" />
+    <ProjectReference Include="..\LustreRadio.Analysis\LustreRadio.Analysis.csproj" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="TagLibSharp" />

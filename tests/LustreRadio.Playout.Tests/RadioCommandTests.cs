@@ -82,6 +82,27 @@ public sealed class RadioCommandTests : IDisposable
     }
 
     [Fact]
+    public void Commands_AreLogged_WithoutPinOrNoise()
+    {
+        var lines = new List<string>();
+        var handler = new RadioCommandHandler(_radio, _db, new AdminSessions(_clock, () => _db.Settings.Get(RadioCommandHandler.PinKey)), lines.Add);
+        IpcMessage Do(string name, Dictionary<string, string>? args = null) => handler.Handle(new IpcMessage { Type = "cmd", Id = Guid.NewGuid().ToString("N"), Name = name, Args = args });
+
+        Do("set-pin", new() { ["pin"] = "482193" });
+        Do("login", new() { ["pin"] = "000000" });
+        Do("get-state");
+        Do("pause");
+        Do("set-volume", new() { ["value"] = "0.5" });
+        Do("set-volume", new() { ["value"] = "0.6" });
+        Do("rescan");
+
+        Assert.Equal(
+            ["Komanda: set-pin -> ok", "Komanda: login -> wrong-pin", "Komanda: pause -> ok", "Komanda: set-volume 0.5 -> ok", "Komanda: rescan -> admin-required"],
+            lines);
+        Assert.DoesNotContain(lines, l => l.Contains("482193") || l.Contains("000000"));
+    }
+
+    [Fact]
     public void MusicFolders_MustExist_OtherwiseNothingChanges()
     {
         var session = LoginAsAdmin();

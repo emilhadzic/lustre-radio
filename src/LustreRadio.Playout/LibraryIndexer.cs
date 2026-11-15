@@ -8,6 +8,9 @@ public sealed record IndexSummary(int FilesOnDisk, int Added, int Rescanned, int
 {
     /// <summary>Koliko je pesama u ovom prolazu potvrdjeno po izjavi o kolektivnoj licenci.</summary>
     public int VerifiedCollectively { get; init; }
+
+    /// <summary>Koliko je ranije skeniranih pesama u ovom prolazu dobilo izmerenu glasnocu.</summary>
+    public int LoudnessMeasured { get; init; }
 }
 
 /// <summary>
@@ -26,7 +29,14 @@ public static class LibraryIndexer
         var diff = LibraryFiles.Diff(known.Select(t => new KnownFile(t.Path, t.SizeBytes, t.LastWriteUtc)), onDisk);
         var undecodable = 0;
 
-        foreach (var path in diff.New.Concat(diff.Changed))
+        var byPath = known.ToDictionary(t => t.Path, StringComparer.OrdinalIgnoreCase);
+
+        // Pesme skenirane pre nego sto je program umeo da meri glasnocu: izmeri ih sada.
+        // (Fajl koji je sav tisina ostaje bez vrednosti i proverava se ponovo pri svakom skeniranju.)
+        var unmeasured = diff.Unchanged.Where(p => byPath[p] is { DecodeOk: true, Lufs: null }).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var measured = 0;
+
+        foreach (var path in diff.New.Concat(diff.Changed).Concat(unmeasured))
         {
             cancel.ThrowIfCancellationRequested();
             var scanned = TrackScanner.Scan(path);
@@ -49,7 +59,13 @@ public static class LibraryIndexer
                 ExactFrames = scanned.ExactFrames,
                 DurationSeconds = scanned.DurationSeconds,
                 PeakDbfs = scanned.PeakDbfs,
+                Lufs = scanned.Lufs,
             });
+
+            if (scanned.Lufs is not null && unmeasured.Contains(path))
+            {
+                measured++;
+            }
 
             if (scanned.ContentHash.Length > 0)
             {
@@ -63,7 +79,6 @@ public static class LibraryIndexer
             }
         }
 
-        var byPath = known.ToDictionary(t => t.Path, StringComparer.OrdinalIgnoreCase);
         var markedMissing = 0;
         foreach (var path in diff.Missing)
         {
@@ -85,6 +100,7 @@ public static class LibraryIndexer
         return new IndexSummary(onDisk.Count, diff.New.Count, diff.Changed.Count, markedMissing, undecodable)
         {
             VerifiedCollectively = ApplyCollectiveLicense(db),
+            LoudnessMeasured = measured,
         };
     }
 

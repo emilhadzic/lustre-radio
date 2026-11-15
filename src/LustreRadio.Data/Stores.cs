@@ -80,11 +80,11 @@ public sealed class TrackStore
         return _db.Scalar<long>(
             """
             INSERT INTO tracks (path, content_hash, size_bytes, last_write_utc, title, artist, album, genres, kind, decoder_id,
-                                decode_ok, decode_error, sample_rate, channels, exact_frames, duration_seconds, peak_dbfs, added_utc)
+                                decode_ok, decode_error, sample_rate, channels, exact_frames, duration_seconds, peak_dbfs, lufs, added_utc)
             VALUES ($path, $hash, $size, $write, $title, $artist, $album, $genres, $kind, $decoder,
-                    $ok, $error, $rate, $channels, $frames, $duration, $peak, $added)
+                    $ok, $error, $rate, $channels, $frames, $duration, $peak, $lufs, $added)
             ON CONFLICT(path) DO UPDATE SET
-                lufs = CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.lufs ELSE NULL END,
+                lufs = COALESCE(excluded.lufs, CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.lufs ELSE NULL END),
                 bpm = CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.bpm ELSE NULL END,
                 fault_count = CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.fault_count ELSE 0 END,
                 content_hash = excluded.content_hash, size_bytes = excluded.size_bytes, last_write_utc = excluded.last_write_utc,
@@ -99,7 +99,7 @@ public sealed class TrackStore
             ("$title", track.Title), ("$artist", track.Artist), ("$album", track.Album), ("$genres", string.Join('|', track.Genres)),
             ("$kind", track.Kind), ("$decoder", track.DecoderId), ("$ok", track.DecodeOk ? 1 : 0), ("$error", track.DecodeError),
             ("$rate", track.SampleRate), ("$channels", track.Channels), ("$frames", track.ExactFrames),
-            ("$duration", track.DurationSeconds), ("$peak", track.PeakDbfs),
+            ("$duration", track.DurationSeconds), ("$peak", track.PeakDbfs), ("$lufs", track.Lufs),
             ("$added", Db.Iso(track.AddedUtc == default ? DateTime.UtcNow : track.AddedUtc)));
     }
 

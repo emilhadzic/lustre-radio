@@ -36,7 +36,7 @@ jobs:
             Get-Content $logs[0].FullName | Select-Object -Last 1
           }
           & "src\LustreRadio.Bench\$tfm\LustreRadio.Bench.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Bench' }
-          & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe"; if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
+          & "src\LustreRadio.Analyzer\$tfm\LustreRadio.Analyzer.exe" @(Get-ChildItem testdata\audio -Exclude *.opus | ForEach-Object FullName); if ($LASTEXITCODE -ne 0) { throw 'Analyzer' }
           & "src\LustreRadio.Proba\$tfm\LustreRadio.Proba.exe" --auto; if ($LASTEXITCODE -ne 0) { throw 'Proba' }
       - name: Ekrani (slike i provera velicine kontrola)
         shell: pwsh

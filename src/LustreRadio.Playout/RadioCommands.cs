@@ -46,9 +46,12 @@ public sealed class RadioCommandHandler : IIpcHandler
     private readonly IRadioControl _radio;
     private readonly LustreDatabase _db;
     private readonly AdminSessions _sessions;
+    private readonly Action<string>? _log;
+    private long _lastVolumeLog = long.MinValue / 2;
 
-    public RadioCommandHandler(IRadioControl radio, LustreDatabase db, AdminSessions sessions)
+    public RadioCommandHandler(IRadioControl radio, LustreDatabase db, AdminSessions sessions, Action<string>? log = null)
     {
+        _log = log;
         _radio = radio ?? throw new ArgumentNullException(nameof(radio));
         _db = db ?? throw new ArgumentNullException(nameof(db));
         _sessions = sessions ?? throw new ArgumentNullException(nameof(sessions));
@@ -63,7 +66,47 @@ public sealed class RadioCommandHandler : IIpcHandler
 
     public RadioState CurrentState() => _radio.GetState();
 
+    /// <summary>
+    /// Izvrsava komandu i belezi je u dnevnik (da se proba moze proveriti i bez pitanja ko je sta pritisnuo).
+    /// PIN i ostali argumenti se nikad ne upisuju; upiti stanja i produzavanje sesije se ne beleze.
+    /// </summary>
     public IpcMessage Handle(IpcMessage command)
+    {
+        var response = Execute(command);
+        var name = command.Name ?? string.Empty;
+        if (_log is not null && name is not ("get-state" or "touch") && !IsVolumeRepeat(name))
+        {
+            var detail = name switch
+            {
+                "set-volume" when command.Args?.GetValueOrDefault("value") is { } value => " " + value,
+                "set-language" => $" {command.Args?.GetValueOrDefault("screen")}={command.Args?.GetValueOrDefault("lang")}",
+                _ => string.Empty,
+            };
+            _log($"Komanda: {name}{detail} -> {(response.Ok == true ? "ok" : response.Error)}");
+        }
+
+        return response;
+    }
+
+    /// <summary>Dok se klizac glasnoce vuce stize mnogo komandi: u dnevnik ide najvise jedna u sekundi.</summary>
+    private bool IsVolumeRepeat(string name)
+    {
+        if (name != "set-volume")
+        {
+            return false;
+        }
+
+        var now = Environment.TickCount64;
+        if (now - _lastVolumeLog < 1000)
+        {
+            return true;
+        }
+
+        _lastVolumeLog = now;
+        return false;
+    }
+
+    private IpcMessage Execute(IpcMessage command)
     {
         ArgumentNullException.ThrowIfNull(command);
         var name = command.Name ?? string.Empty;
