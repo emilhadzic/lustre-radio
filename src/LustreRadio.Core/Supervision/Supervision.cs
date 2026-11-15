@@ -11,12 +11,6 @@ public static class InstanceNames
     public const string Engine = @"Global\LustreRadio.Engine";
     public const string Watchdog = @"Global\LustreRadio.Watchdog";
     public const string Ui = @"Global\LustreRadio.UI";
-
-    /// <summary>Promenljive okruzenja (za testove i prenosnu upotrebu).</summary>
-    public const string DataRootVariable = "LUSTRE_DATA_ROOT";
-
-    /// <summary>SAMO ZA AUTOMATSKE TESTOVE: dozvoljava rad u sesiji 0, gde nema zvuka.</summary>
-    public const string AllowSessionZeroVariable = "LUSTRE_TEST_ALLOW_SESSION0";
 }
 
 /// <summary>
@@ -85,8 +79,7 @@ public static class SessionGuard
     /// Audio proces sme da radi samo u prijavljenoj korisnickoj sesiji. Sesija 0 je sesija
     /// Windows servisa, gde pristup zvuku nije pouzdan (spec. 2.1).
     /// </summary>
-    public static bool MayRun(int sessionId, string? allowSessionZeroVariable) =>
-        sessionId != 0 || allowSessionZeroVariable == "1";
+    public static bool MayRun(int sessionId) => sessionId != 0;
 }
 
 /// <summary>
@@ -175,22 +168,37 @@ public sealed record SupervisorDecision(SupervisorAction Action, bool SafeMode, 
 
 public sealed record SupervisorSettings
 {
+    /// <summary>Provera pocinje na svakih ovoliko, bez obzira koliko je prethodna trajala (spec. 2.2).</summary>
+    public TimeSpan PollInterval { get; init; } = TimeSpan.FromSeconds(2);
+
+    /// <summary>Najduze trajanje jedne provere; posle toga se racuna kao neuspela.</summary>
+    public TimeSpan PollTimeout { get; init; } = TimeSpan.FromSeconds(1.5);
+
+    /// <summary>Pauza pre ponovnog pokretanja posle PADA (da se ne vrti u krug). Ne vazi posle prekidanja zamrznutog procesa.</summary>
     public TimeSpan RestartDelay { get; init; } = TimeSpan.FromSeconds(3);
 
-    /// <summary>Bez odgovora ovoliko dugo = zamrznut.</summary>
-    public TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(30);
+    /// <summary>Bez odgovora ovoliko dugo (i najmanje MinFailedPolls uzastopnih neuspelih provera) = zamrznut.</summary>
+    public TimeSpan HeartbeatTimeout { get; init; } = TimeSpan.FromSeconds(20);
+
+    /// <summary>Koliko uzastopnih provera mora da ne uspe pre nego sto se proces proglasi zamrznutim.</summary>
+    public int MinFailedPolls { get; init; } = 5;
+
+    /// <summary>Koliko se ceka PRVI odgovor posle pokretanja (pokretanje na sporom racunaru traje).</summary>
+    public TimeSpan StartupTimeout { get; init; } = TimeSpan.FromSeconds(60);
 
     /// <summary>"Svira", a brojac zvuka stoji ovoliko dugo = zamrznut zvuk.</summary>
     public TimeSpan StallTimeout { get; init; } = TimeSpan.FromSeconds(15);
 
     /// <summary>Posle ovoliko stabilnog rada sigurni rezim se ukida.</summary>
     public TimeSpan SafeModeProbation { get; init; } = TimeSpan.FromMinutes(10);
+
+    /// <summary>
+    /// Ako izmedju dve provere prodje vise od ovoga, nadzor sam nije radio (racunar zauzet ili se budio).
+    /// To vreme se ne racuna kao cutanje audio procesa: inace bi nadzor ubio zdrav proces.
+    /// </summary>
+    public TimeSpan SelfStallGap { get; init; } = TimeSpan.FromSeconds(6);
 }
 
-/// <summary>
-/// Odluke nadzora (spec. 2.2), bez ikakvog pristupa sistemu: lako se testira.
-/// Pauza, mirovanje van radnog vremena i nepovezan zvucnik NISU kvar.
-/// </summary>
 public sealed class SupervisorPolicy(IMonotonicClock clock, SupervisorSettings settings)
 {
     private readonly CrashLoopDetector _crashes = new();
@@ -201,6 +209,10 @@ public sealed class SupervisorPolicy(IMonotonicClock clock, SupervisorSettings s
     private long _lastFrames = -1;
     private bool _startedByUs;
     private bool _wasRunning;
+    private bool _awaitingFirstResponse;
+    private bool _evaluatedBefore;
+    private TimeSpan _lastEvaluate;
+    private int _failedPolls;
 
     public bool SafeMode { get; private set; }
 
@@ -208,6 +220,17 @@ public sealed class SupervisorPolicy(IMonotonicClock clock, SupervisorSettings s
     {
         ArgumentNullException.ThrowIfNull(observation);
         var now = clock.Elapsed;
+
+        if (_evaluatedBefore && now - _lastEvaluate > settings.SelfStallGap)
+        {
+            // nadzor sam nije radio: brojanje cutanja i stajanja zvuka krece iznova
+            _lastResponse = now;
+            _lastProgress = now;
+            _failedPolls = 0;
+        }
+
+        _evaluatedBefore = true;
+        _lastEvaluate = now;
 
         if (observation.StopRequested)
         {
@@ -247,19 +270,25 @@ public sealed class SupervisorPolicy(IMonotonicClock clock, SupervisorSettings s
                 _lastProgress = now;
                 _healthySince = now;
                 _lastFrames = -1;
+                _failedPolls = 0;
+                _awaitingFirstResponse = true;
             }
         }
 
         if (!observation.Responded)
         {
-            if (now - _lastResponse >= settings.HeartbeatTimeout)
+            _failedPolls++;
+            var limit = _awaitingFirstResponse ? settings.StartupTimeout : settings.HeartbeatTimeout;
+            if (now - _lastResponse >= limit && _failedPolls >= settings.MinFailedPolls)
             {
-                return Restart(now, "Audio proces ne odgovara.");
+                return Restart(now, _awaitingFirstResponse ? "Audio proces se nije javio posle pokretanja." : "Audio proces ne odgovara.");
             }
 
             return new(SupervisorAction.None, SafeMode, "Ceka se odgovor.");
         }
 
+        _failedPolls = 0;
+        _awaitingFirstResponse = false;
         _lastResponse = now;
         var shouldProgress = observation.OnAir && !observation.Paused && observation.OutputPlaying;
         if (!shouldProgress || observation.FramesRendered != _lastFrames)
@@ -304,6 +333,8 @@ public sealed class SupervisorPolicy(IMonotonicClock clock, SupervisorSettings s
         _lastProgress = now;
         _healthySince = now;
         _lastFrames = -1;
+        _failedPolls = 0;
+        _awaitingFirstResponse = true;
     }
 }
 

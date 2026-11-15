@@ -250,3 +250,40 @@ Dokaz: GitHub Actions, Windows Server 2025, 15.11.2026., pokretanje 43732101731,
 Odstupanje od plana: merenje glasnoće ide u prolazu skeniranja (tokom rada), a ne posle 23:30. Razlog: fajl se pri skeniranju ionako ceo dekodira, a merenje dodaje samo dva mala filtera po uzorku. Koliko to opterećuje mini PC **nije mereno**.
 
 Poznato ograničenje: fajl koji je sav tišina ostaje bez glasnoće i ponovo se proverava pri svakom skeniranju.
+
+## Faza A pre M7 (15.11.2026.) – ČEKA PREGLED VLASNIKA; nije spojena u `main`
+
+Grana `faza-a`. Plan: `claude/LUSTRE_RADIO_Pre-M7_tehnicka_revizija.md`. Izveštaj: `claude/LUSTRE_RADIO_Faza_A_izvestaj.md`.
+
+Gde je šta provereno: **G** = GitHub Actions (Windows Server 2025, 4 procesora, bez zvučnog uređaja); **R** = glavni računar vlasnika; **M** = mini PC u lokalu.
+
+| Stavka | G | R | M |
+|---|---|---|---|
+| `Microsoft.Data.Sqlite` 10.0.15 → `SQLitePCLRaw.lib.e_sqlite3` 2.1.13 (lanac ispisan komandom) | prošao | – | – |
+| SQLite u objavljenom fajlu `e_sqlite3.dll`: 3.53.3 (ranjive su < 3.50.2) | prošao | nije rađeno | nije rađeno |
+| SQLite koji učita objavljeni Engine: 3.53.3 | prošao | nije rađeno | nije rađeno |
+| Ranjivosti NU1901–NU1904 obaraju build (proba sa starim paketom: build pao) | prošao | – | – |
+| Baza iz prethodne verzije (SQLite 3.46.1) otvara se nepromenjena i upisiva je | prošao (probna baza) | **nije rađeno** (prava baza vlasnika) | nije rađeno |
+| Zamrznut Engine: otkrivanje ≤ 30,0 s, tri puta zaredom | prošao: 19,8–20,2 s | nije rađeno | nije rađeno |
+| Zamrznut Engine: novi proces ≤ 35,0 s | prošao: 19,9–20,4 s | nije rađeno | nije rađeno |
+| Isti test sa starim vrednostima (5 s / 30 s) pada | prošao (pao kako treba: 34,2 s) | – | – |
+| Zamrzavanje od 10 s nije kvar | prošao | nije rađeno | nije rađeno |
+| Opterećen računar 45 s (12 petlji na 4 procesora) nije kvar | prošao | nije rađeno | **nije rađeno** (ovde je najvažnije) |
+| Buđenje računara / zastoj samog nadzora nije kvar | prošao **samo kao simulacija** (lažni sat) | **nije rađeno** | nije rađeno |
+| Ubijen Engine se vraća ≤ 15 s (T-WD-01) | prošao: 0,9 s (novi proces; bez zvuka) | nije rađeno ovom verzijom | nije rađeno |
+| 20 pokretanja × Engine, nadzor, interfejs: uvek 1+1+1 (T-WD-03) | prošao | nije rađeno | nije rađeno |
+| Ubijen interfejs ne dira Engine (deo T-WD-04) | prošao | zatvaranje prozora: prošao 15.11. (starija verzija) | nije rađeno |
+| Sigurni režim: Engine stvarno pokrenut sa `--safe` posle 3 prekida | prošao | nije rađeno | nije rađeno |
+| `LUSTRE_TEST_ALLOW_SESSION0` i `LUSTRE_DATA_ROOT` uklonjene; postavljene promenljive nemaju dejstva | prošao | – | – |
+| U objavljenom paketu nema teksta `LUSTRE_TEST_`, `LUSTRE_DATA_ROOT`, `ALLOW_SESSION0` | prošao (33 naša fajla) | – | – |
+| Nijedan naš program ne čita promenljive okruženja (arhitektonski test) | prošao (15 projekata) | – | – |
+
+Dokaz: pokretanje 43738170393 (izmena `4520661`), 518 testova, svi prošli. Probe sa namernim kvarom, grana `proba-pravila`: 43738844042 (stari paket → `error NU1903`), 43738937377 (stare vrednosti nadzora → „T-WD-02 PAO: 34,2 s“).
+
+Nalazi tokom rada:
+- Red `WarningsNotAsErrors NU1901–NU1904` u `Directory.Build.props` dodat je još u M0 (13.11.). Zbog njega upozorenje o ranjivosti nije obaralo build kad je SQLite dodat u M3. Uklonjen.
+- Prethodna verzija je stvarno nosila SQLite 3.46.1 (izmereno, pokretanje 43736748161).
+- GitHub računar radi u sesiji 2, ne 0; prekidač za sesiju 0 nije bio potreban.
+- Kad se isti program pokrene dok već radi, drugi primerak piše u poseban fajl dnevnika (`engine-…_001.log`). Nije greška, ali dnevnik jednog dana može biti u više fajlova.
+
+Čeka odobrenje (nije u odluci O1): prvi odgovor Engine-a posle pokretanja čeka se do 60 s pre nego što se proglasi kvar (umesto 20 s), jer pokretanje na sporom računaru može da traje. U kodu je na grani `faza-a`; u specifikaciju nije upisano.

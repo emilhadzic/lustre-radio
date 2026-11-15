@@ -1,4 +1,5 @@
 using System.Reflection.Metadata;
+using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using Xunit;
 
@@ -86,6 +87,37 @@ public class DependencyRulesTests
 
         Assert.Contains(Prefix + "Core", ReferencesOf(FindAssembly("Engine")));
         Assert.Contains("Serilog", ReferencesOf(FindAssembly("Engine")));
+    }
+
+    /// <summary>
+    /// Nijedan nas program ne cita promenljive okruzenja i nema skrivenih prekidaca "LUSTRE_...".
+    /// (Do 15.11.2026. postojale su LUSTRE_TEST_ALLOW_SESSION0 i LUSTRE_DATA_ROOT, samo zbog testova.)
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(Projects))]
+    public void Project_HasNoEnvironmentSwitches(string project)
+    {
+        using var stream = File.OpenRead(FindAssembly(project));
+        using var pe = new PEReader(stream);
+        var md = pe.GetMetadataReader();
+
+        var calls = md.MemberReferences
+            .Select(h => md.GetString(md.GetMemberReference(h).Name))
+            .Where(name => name is "GetEnvironmentVariable" or "GetEnvironmentVariables" or "ExpandEnvironmentVariables")
+            .ToArray();
+        Assert.Empty(calls);
+
+        var texts = new List<string>();
+        for (var handle = MetadataTokens.UserStringHandle(1); !handle.IsNil; handle = md.GetNextHandle(handle))
+        {
+            var text = md.GetUserString(handle);
+            if (text.Contains("LUSTRE_", StringComparison.Ordinal))
+            {
+                texts.Add(text);
+            }
+        }
+
+        Assert.Empty(texts);
     }
 
     private static string[] ReferencesOf(string assemblyPath)

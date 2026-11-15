@@ -24,7 +24,7 @@ public static class Program
         var safe = args.Contains("--safe");
         var dataRoot = smoke
             ? Path.Combine(Path.GetTempPath(), "LustreRadio-smoke-" + Environment.ProcessId)
-            : Environment.GetEnvironmentVariable(InstanceNames.DataRootVariable) is { Length: > 0 } custom ? custom : AppPaths.DefaultDataRoot;
+            : AppPaths.DefaultDataRoot;
 
         try
         {
@@ -33,16 +33,10 @@ public static class Program
                 "LUSTRE RADIO Engine {Version}; sesija {SessionId}; podaci: {DataRoot}; sigurni rezim: {Safe}",
                 typeof(Program).Assembly.GetName().Version, sessionId, dataRoot, safe);
 
-            var allowSessionZero = Environment.GetEnvironmentVariable(InstanceNames.AllowSessionZeroVariable);
-            if (!smoke && !SessionGuard.MayRun(sessionId, allowSessionZero))
+            if (!smoke && !SessionGuard.MayRun(sessionId))
             {
                 log.Fatal("Audio proces je pokrenut u sesiji 0 (kao servis). Tu nema pouzdanog zvuka; izlazim.");
                 return ExitWrongSession;
-            }
-
-            if (sessionId == 0 && allowSessionZero == "1")
-            {
-                log.Warning("PROBNI REZIM: rad u sesiji 0 je dozvoljen promenljivom {Variable}. Ne koristiti u lokalu.", InstanceNames.AllowSessionZeroVariable);
             }
 
             using var instance = smoke ? null : SingleInstance.TryAcquire(InstanceNames.Engine);

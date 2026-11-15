@@ -72,6 +72,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
         _log = options.Log ?? (_ => { });
         Directory.CreateDirectory(options.DataRoot);
         Database = LustreDatabase.Open(Path.Combine(options.DataRoot, Core.AppPaths.DatabaseFileName));
+        _log($"Baza: SQLite {Database.SqliteVersion}, sema {Database.SchemaVersion}");
         if (!Database.QuickCheck())
         {
             _log("UPOZORENJE: provera baze nije prosla.");

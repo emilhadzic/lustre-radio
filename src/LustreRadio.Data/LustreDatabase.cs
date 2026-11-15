@@ -80,6 +80,9 @@ public sealed class LustreDatabase : IDisposable
 
     public int SchemaVersion => (int)Scalar<long>("PRAGMA user_version");
 
+    /// <summary>Verzija SQLite-a koja je stvarno ucitana (npr. "3.53.3"); za proveru posle zamene paketa.</summary>
+    public string SqliteVersion => Scalar<string>("SELECT sqlite_version()") ?? string.Empty;
+
     public string JournalMode => Scalar<string>("PRAGMA journal_mode") ?? string.Empty;
 
     /// <summary>Brza provera ispravnosti baze (radi se pri svakom startu).</summary>
