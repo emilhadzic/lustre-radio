@@ -107,8 +107,8 @@ Automatska prijava naloga „LustreRadio“ (standardni, ne administratorski)
 
 - **Jedna instanca:** tri imenovana mutex-a (`Global\LustreRadio.Watchdog`, `.Engine`, `.UI`). Windows ih sam oslobađa kad proces umre. Drugi start UI-ja samo pošalje postojećem „prikaži se“ i zatvori se.
 - **Watchdog ne vezuje život Engine-a za svoj.** Ako Watchdog padne, Engine nastavlja da svira. Novi Watchdog **preuzima** postojeće programe (prepoznaje ih po mutex-u i vezi) i ne pokreće nove.
-- **Signal života:** Engine svakih 5 s šalje Watchdogu stanje (svira / pauzirano / mirovanje) i brojač puštenih uzoraka. Kvar je: nema signala 30 s, ili stanje „svira“ a brojač stoji 15 s. Pauza i mirovanje nisu kvar. Sva vremena mere se monotonim satom.
-- **Oporavak Engine-a:** prekid procesa → čekanje da se mutex oslobodi (do 10 s) → pauza 3 s → start. Engine nastavlja iz snimka stanja (ista pesma, pozicija, fade-in 3 s).
+- **Signal života:** Watchdog na svake 2 s pita Engine za stanje (svira / pauzirano / mirovanje) i brojač puštenih uzoraka; provere idu po fiksnom rasporedu, bez obzira koliko je prethodna trajala. Kvar je: nema odgovora 20 s **i** najmanje 5 uzastopnih neuspelih provera, ili stanje „svira“ a brojač stoji 15 s. Pauza i mirovanje nisu kvar. Vreme tokom kog sam Watchdog nije radio (zauzet računar, buđenje) ne računa se kao ćutanje Engine-a. Sva vremena mere se monotonim satom. *(Izmenjeno 15.11.2026., odluka O1; ranije: signal na 5 s, kvar posle 30 s.)*
+- **Oporavak Engine-a:** prekid procesa → čekanje da se mutex oslobodi (do 10 s) → start. Pauza od 3 s pre starta važi samo posle pada Engine-a, ne posle prekidanja zamrznutog procesa *(izmenjeno 15.11.2026.)*. Engine nastavlja iz snimka stanja (ista pesma, pozicija, fade-in 3 s).
 - 3 pada Engine-a za 10 min → **sigurni režim** (samo rezervna reprodukcija, bez analize i skeniranja); pokušaj punog režima na 60 s.
 - **UI:** pad → novi start posle 5 s; ne odgovara 30 s → prekid i novi start; 5 padova za 10 min → pokušaj na 5 min. Muzika se pri tome ne dira.
 - **Watchdog:** vraća ga Task Scheduler (najkasnije za 5 min). Za to vreme muzika svira, ali niko ne nadzire Engine.
@@ -228,6 +228,8 @@ Još nepoznato [?]: vidi deo 26.
 
 Budžet se posle prvog merenja koriguje stvarnim brojevima; ako zbir ne prolazi, primenjuje se U1.
 
+**Mera memorije (odluka 15.11.2026., O6):** budžet se proverava po **privatnoj memoriji procesa**. Radni skup svakog procesa i slobodna memorija celog računara beleže se odvojeno.
+
 ### 3.3 Ocena [P]
 - Dekodiranje i mešanje dve pesme je lak posao za ovaj procesor, jer se sve odluke računaju unapred.
 - Glavni rizici: 4 GB memorije uz Windows 11, pozadinska aktivnost Windowsa (ažuriranja, Defender), HDMI zvuk koji nestaje kad se monitor ugasi.
@@ -340,6 +342,8 @@ LUFS → tišina na krajevima → outro/intro → BPM → mreža udaraca i stabi
 
 ### 6.2 Testni skup
 Veštački signali (klik-trake 60–140 BPM, sekvence u 24 tonaliteta, šum poznatog nivoa) · EBU Tech 3341/3342 · ~50 stvarnih pesama sa referencama (Mixxx i FFmpeg samo kao merni alati).
+
+**Odluka 15.11.2026. (O4):** referentni skup ima najmanje 50 pesama iz biblioteke lokala. Rezultati Mixxx-a su poređenje, ne apsolutna istina. Uvod i kraj pesme (outro/intro) moraju proći i slušnu proveru na stvarnim pesmama, posebno na tihim uvodima i krajevima; Smart Crossfade se ne proglašava spremnim samo na osnovu veštačkih signala.
 
 ### 6.3 Pragovi (predlog; konačno posle prvog merenja)
 LUFS: ±0,1 LU na EBU signalima, ±0,5 LU na muzici · BPM: ≥ 90% unutar ±4% · za beatmatching dodatno: greška tempa ≤ 0,1% i mreža udaraca ±10 ms na veštačkim signalima · tonalitet: ponderisani skor ≥ 70%.
@@ -808,6 +812,25 @@ Stavke 1, 4, 8, 9 i 12 utiču na prve faze. Ostale mogu da stignu do faze M4.
 - Nove pesme u folderima sa muzikom automatski dobijaju status „Provereno“ po toj izjavi.
 - Ostaje isto: bez zapisa o osnovu ništa ne svira; odbijena pesma ostaje odbijena; zamenjen fajl gubi status; unapred pripremljeni prelazi (obrađene kopije) traže posebnu potvrdu da su izmene dozvoljene.
 - Ranije pravilo „nikad se ne pretpostavlja pokrivenost SOKOJ/OFPS“ zamenjeno je pravilom „pokrivenost se prihvata na osnovu izričite izjave vlasnika“.
+
+**Odluke vlasnika 15.11.2026. (posle Pre-M7 tehničke revizije):**
+
+| # | Odluka |
+|---|---|
+| O1 | Nadzor proverava na 2 s; kvar posle 20 s bez odgovora i najmanje 5 uzastopnih neuspelih provera (deo 2.2). Test mora da dokaže otkrivanje i zamenu u roku od 30 s. Opterećen računar i buđenje računara ne smeju da izazovu lažno prekidanje. |
+| O2 | SQLite `synchronous=FULL` ostaje. Upis istorije mora biti potpuno izvan audio-niti. |
+| O3 | Ručna promena programa važi od sledeće pesme; tekuća pesma se ne prekida. |
+| O4 | Referentni skup od najmanje 50 pesama; Mixxx je poređenje, ne istina (deo 6.2). |
+| O5 | Minimalan testni režim za noćne probe. Puna funkcionalnost događaja i praznika ostaje za M8. |
+| O6 | Privatna memorija procesa je glavna mera budžeta od 240 MB (deo 3.2). |
+
+Obavezna pravila iz iste odluke:
+- **Audio-nit ne dekodira zvuk.** Sav zvuk koji audio-nit troši priprema zasebna nit i predaje ga kroz bafer. Audio-nit ne otvara fajlove, ne poziva dekodere, ne pristupa bazi, ne piše dnevnik, ne čeka brave i ne zauzima memoriju.
+- **Istorija emitovanja se ne odbacuje neprimetno.** Neupisani događaji se čuvaju tako da se mogu oporaviti.
+- **Poznate ranjivosti u paketima (NU1901–NU1904) obaraju build.** Posle zamene paketa proveravaju se stvarno razrešene zavisnosti i verzija SQLite-a u objavljenom paketu.
+- Izveštaji o testovima razdvajaju: GitHub, glavni računar vlasnika, mini PC u lokalu.
+- M7 ne počinje dok planer, pisar, audio-nit i potrebni koraci M6 nisu dokazano završeni. Svaka faza se pregleda i prihvata pre sledeće.
+- `Microsoft.Data.Sqlite` je na liniji 10.0.x (deo 17).
 
 **Još otvoreno:** koji POS program, da li je preko celog ekrana i da li koristi zvuk; AUX ulaz na zvučniku; memorija u mirovanju i „Slots used“; slobodan disk; drugi programi na mini PC-ju; BIOS opcija za struju; model monitora; izlaz za preslušavanje; poseban Windows nalog.
 
