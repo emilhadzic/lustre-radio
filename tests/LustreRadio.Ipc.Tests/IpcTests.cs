@@ -183,12 +183,15 @@ public sealed class IpcTests : IDisposable
     public async Task TooManyCommandsPerSecond_AreRefused()
     {
         await using var client = await IpcClient.ConnectAsync(_pipe, Timeout);
-        var tasks = Enumerable.Range(0, 300).Select(_ => client.SendAsync("echo")).ToArray();
+        // 200 komandi odjednom: vise od granice (50 u sekundi), a manje od reda odgovora (256).
+        // Sa 300 je test povremeno padao (15.11.2026.): odgovori su prepunili red, pa je server,
+        // po drugom pravilu, prekinuo vezu sa klijentom koji ne stize da cita.
+        var tasks = Enumerable.Range(0, 200).Select(_ => client.SendAsync("echo")).ToArray();
         var results = await Task.WhenAll(tasks);
 
         Assert.Contains(results, r => r.Error == "rate-limit");
         Assert.True(results.Count(r => r.Ok == true) >= 50);
-        Assert.True(_handler.Calls <= 200);
+        Assert.True(_handler.Calls <= 150);
     }
 
     [Fact]
