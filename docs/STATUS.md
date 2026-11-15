@@ -267,7 +267,7 @@ Poznato ograničenje: fajl koji je sav tišina ostaje bez glasnoće i ponovo se 
 
 ## Faza A pre M7 (15.11.2026.) – ZAVRŠENA NA G; prihvaćena i spojena u `main`
 
-Prihvatio vlasnik 15.11.2026. Spajanje: izmena `8123775` (grana `faza-a`, poslednja izmena `0a7f0fb`). Stabilna tačka za vraćanje: oznaka `stabilno-faza-a`.
+Prihvatio vlasnik 15.11.2026. Spajanje: izmena `8123775` (grana `faza-a`, poslednja izmena `0a7f0fb`). Stabilna tačka za vraćanje: grana `stabilno-faza-a` (izmena `bcb3eba`; oznake iz ove radne sesije ne mogu da se pošalju na GitHub, pa je umesto oznake grana koja se ne menja).
 
 **Šta „završena na G“ znači:** svi automatski testovi su izvršeni i prošli na GitHub Actions. Na glavnom računaru vlasnika (R) ništa iz faze A nije testirano. Na mini PC-ju (M) se ne testira: `NOT TESTED – ACCEPTED RISK`.
 
