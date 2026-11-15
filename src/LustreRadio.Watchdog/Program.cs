@@ -24,7 +24,7 @@ namespace LustreRadio.Watchdog;
 public static class Program
 {
     private const string EngineProcessName = "LustreRadio.Engine";
-    private static readonly SupervisorSettings Settings = new();
+    private static readonly SupervisorSettings Settings = new() { PollInterval = TimeSpan.FromSeconds(5), HeartbeatTimeout = TimeSpan.FromSeconds(30) }; // PROBA: stare vrednosti
 
     public static int Main(string[] args)
     {
