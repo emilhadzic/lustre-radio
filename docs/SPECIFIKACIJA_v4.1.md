@@ -802,6 +802,13 @@ Stavke 1, 4, 8, 9 i 12 utiču na prve faze. Ostale mogu da stignu do faze M4.
   - Isključivanje Windows zvukova (D11) ne sme da ugasi zvuke koje POS možda koristi [?].
 - **Testiranje:** mini PC nije dostupan za duže testove tokom dana. Testovi se rade na računaru za razvoj, uz režim „slab računar“ (ograničen broj jezgara, brzina i memorija). Taj režim je procena, ne zamena: završni testovi na mini PC-ju rade se noću (23:30–07:00), kad lokal ne radi, i ne traže ničije prisustvo.
 
+**Odluka vlasnika 14.11.2026. (menja deo 9 i D10):**
+- Vlasnik je izjavio da ima potrebna prava i da plaća SOKOJ i OFPS, i tražio da pesme sviraju na tom osnovu.
+- Pesma sme u eter i na osnovu **izjave vlasnika o kolektivnoj licenci**. Program beleži organizacije, ko je i kada dao izjavu. Odgovornost za tačnost izjave je na vlasniku.
+- Nove pesme u folderima sa muzikom automatski dobijaju status „Provereno“ po toj izjavi.
+- Ostaje isto: bez zapisa o osnovu ništa ne svira; odbijena pesma ostaje odbijena; zamenjen fajl gubi status; unapred pripremljeni prelazi (obrađene kopije) traže posebnu potvrdu da su izmene dozvoljene.
+- Ranije pravilo „nikad se ne pretpostavlja pokrivenost SOKOJ/OFPS“ zamenjeno je pravilom „pokrivenost se prihvata na osnovu izričite izjave vlasnika“.
+
 **Još otvoreno:** koji POS program, da li je preko celog ekrana i da li koristi zvuk; AUX ulaz na zvučniku; memorija u mirovanju i „Slots used“; slobodan disk; drugi programi na mini PC-ju; BIOS opcija za struju; model monitora; izlaz za preslušavanje; poseban Windows nalog.
 
 ---
