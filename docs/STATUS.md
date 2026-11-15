@@ -275,7 +275,7 @@ Gde je šta provereno: **G** = GitHub Actions (Windows Server 2025, 4 procesora,
 | Ubijen interfejs ne dira Engine (deo T-WD-04) | prošao | zatvaranje prozora: prošao 15.11. (starija verzija) | nije rađeno |
 | Sigurni režim: Engine stvarno pokrenut sa `--safe` posle 3 prekida | prošao | nije rađeno | nije rađeno |
 | `LUSTRE_TEST_ALLOW_SESSION0` i `LUSTRE_DATA_ROOT` uklonjene; postavljene promenljive nemaju dejstva | prošao | – | – |
-| U objavljenom paketu nema teksta `LUSTRE_TEST_`, `LUSTRE_DATA_ROOT`, `ALLOW_SESSION0` | prošao (14 naših fajlova) | – | – |
+| U objavljenom paketu nema teksta `LUSTRE_TEST_`, `LUSTRE_DATA_ROOT`, `ALLOW_SESSION0` | prošao (33 naša fajla) | – | – |
 | Nijedan naš program ne čita promenljive okruženja (arhitektonski test) | prošao (15 projekata) | – | – |
 
 Dokaz: pokretanje 43738170393 (izmena `4520661`), 518 testova, svi prošli. Probe sa namernim kvarom, grana `proba-pravila`: 43738844042 (stari paket → `error NU1903`), 43738937377 (stare vrednosti nadzora → „T-WD-02 PAO: 34,2 s“).
