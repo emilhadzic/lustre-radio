@@ -4,7 +4,11 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
-    <WarningsNotAsErrors>NU1901;NU1902;NU1903;NU1904</WarningsNotAsErrors>
+    <!-- Poznate ranjivosti u paketima (i posrednim) obaraju build. Ne potiskivati: resiti novom verzijom paketa. -->
+    <NuGetAudit>true</NuGetAudit>
+    <NuGetAuditMode>all</NuGetAuditMode>
+    <NuGetAuditLevel>low</NuGetAuditLevel>
+    <WarningsAsErrors>$(WarningsAsErrors);NU1901;NU1902;NU1903;NU1904</WarningsAsErrors>
     <Deterministic>true</Deterministic>
     <!-- Svaki projekat sme da koristi samo ono sto je sam naveo (pravila zavisnosti, spec. 2.5). -->
     <DisableTransitiveProjectReferences>true</DisableTransitiveProjectReferences>

@@ -317,4 +317,53 @@ public sealed class DatabaseTests : IDisposable
         Assert.False(LustreDatabase.VerifyFile(Path.Combine(_directory, "nema.db")));
         Assert.ThrowsAny<Exception>(() => LustreDatabase.Open(garbage).Dispose());
     }
+
+    [Fact] // GHSA-2m69-gcr7-jv3q / CVE-2025-6965: ranjive su verzije SQLite-a pre 3.50.2
+    public void LoadedSqlite_IsNotTheVulnerableVersion()
+    {
+        using var db = LustreDatabase.Open(_path);
+        var version = Version.Parse(db.SqliteVersion);
+        Assert.True(version >= new Version(3, 50, 2), "Ucitan je SQLite " + db.SqliteVersion);
+    }
+
+    [Fact]
+    public void DatabaseWrittenByPreviousVersion_OpensUnchanged_AndStaysWritable()
+    {
+        // Baza koju je napravio ovaj program dok je koristio SQLite 3.46.1 (izmena add369c, 15.11.2026.).
+        var source = Path.Combine(AppContext.BaseDirectory, "db", "sema1-sqlite-3.46.1.db");
+        File.Copy(source, _path);
+
+        using (var db = LustreDatabase.Open(_path))
+        {
+            Assert.True(db.QuickCheck());
+            Assert.Equal(1, db.SchemaVersion);
+
+            var tracks = db.Tracks.GetAll();
+            Assert.Equal(5, tracks.Count);
+            Assert.Equal("Pesma 1 čćžšđ", tracks[0].Title);
+            Assert.Equal(-14.25, tracks[0].Lufs);
+            Assert.Null(tracks[1].Lufs);
+            Assert.True(tracks[1].Favorite);
+            Assert.True(tracks[2].Blocked);
+            Assert.Equal(["Vece"], tracks[3].Genres);
+            Assert.Equal(441000 * 5, tracks[4].ExactFrames);
+
+            Assert.Equal(LicenseStatus.Verified, db.Licenses.Get("hash01")!.Status);
+            Assert.Equal(LicenseStatus.Imported, db.Licenses.Get("hash02")!.Status);
+            Assert.Equal(5, db.History.GetSince(new DateTime(2026, 11, 1, 0, 0, 0, DateTimeKind.Utc)).Count);
+            Assert.Equal("PBKDF2$primer", db.Settings.Get("pin"));
+            Assert.Equal([@"D:\Muzika\Vece"], db.Settings.GetJson<List<string>>("music-folders"));
+            Assert.Equal("{\"TrackId\":\"1\",\"PositionSeconds\":42.5}", db.State.Get("snapshot"));
+
+            // i dalje se u nju normalno pise
+            db.Tracks.SetLoudness(tracks[1].Id, -9.5);
+            db.Settings.Set("proba", "novo");
+        }
+
+        using var again = LustreDatabase.Open(_path);
+        Assert.True(again.QuickCheck());
+        Assert.Equal(-9.5, again.Tracks.GetAll()[1].Lufs);
+        Assert.Equal("novo", again.Settings.Get("proba"));
+        Assert.Equal(5, again.Tracks.GetAll().Count);
+    }
 }

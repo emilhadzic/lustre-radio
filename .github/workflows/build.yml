@@ -7,14 +7,30 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: '10.0.x'
+      - name: Zavisnosti (stvarno razresene verzije; poznata ranjivost obara build)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet restore LustreRadio.slnx
+          if ($LASTEXITCODE -ne 0) { throw 'restore nije uspeo (ranjivosti NU1901-NU1904 su greske)' }
+          Write-Host '--- lanac do SQLite-a ---'
+          dotnet nuget why src/LustreRadio.Data/LustreRadio.Data.csproj SQLitePCLRaw.lib.e_sqlite3
+          Write-Host '--- svi paketi projekta Data, i posredni ---'
+          dotnet list src/LustreRadio.Data/LustreRadio.Data.csproj package --include-transitive
+          Write-Host '--- provera ranjivosti, cela solucija, i posredni paketi ---'
+          $report = (dotnet list LustreRadio.slnx package --vulnerable --include-transitive 2>&1 | Out-String)
+          Write-Host $report
+          if ($LASTEXITCODE -ne 0) { throw 'provera ranjivosti nije uspela' }
+          if ($report -match 'has the following vulnerable packages') { throw 'PRONADJEN RANJIV PAKET' }
+          if ($report -notmatch 'no vulnerable packages') { throw 'provera ranjivosti nije dala ocekivan izvestaj' }
       - name: Build
-        run: dotnet build LustreRadio.slnx -c Release
+        run: dotnet build LustreRadio.slnx -c Release --no-restore
       - name: Test
         run: dotnet test LustreRadio.slnx -c Release --no-build --logger "console;verbosity=detailed"
       - name: Smoke (programi se pokrecu i pisu log)
@@ -64,9 +80,31 @@ jobs:
             dotnet publish "src/LustreRadio.$p/LustreRadio.$p.csproj" -c Release -r win-x64 --self-contained true -o publish/LustreRadio
             if ($LASTEXITCODE -ne 0) { throw "publish $p" }
           }
+      - name: Objavljeni paket (bez skrivenih prekidaca; verzija SQLite-a u samom fajlu)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkg = (Resolve-Path publish/LustreRadio).Path
+          $ours = Get-ChildItem $pkg -Filter 'LustreRadio.*' -File
+          if ($ours.Count -lt 10) { throw "premalo nasih fajlova u paketu: $($ours.Count)" }
+          foreach ($file in $ours) {
+            $bytes = [IO.File]::ReadAllBytes($file.FullName)
+            $views = @([Text.Encoding]::Latin1.GetString($bytes), [Text.Encoding]::Unicode.GetString($bytes), [Text.Encoding]::Unicode.GetString($bytes, 1, $bytes.Length - 1))
+            foreach ($needle in 'LUSTRE_TEST_', 'LUSTRE_DATA_ROOT', 'ALLOW_SESSION0') {
+              foreach ($view in $views) { if ($view.Contains($needle)) { throw "$($file.Name) sadrzi '$needle'" } }
+            }
+          }
+          Write-Host "Pregledano $($ours.Count) nasih fajlova: nema teksta LUSTRE_TEST_, LUSTRE_DATA_ROOT, ALLOW_SESSION0."
+          $dll = Join-Path $pkg 'e_sqlite3.dll'
+          if (-not (Test-Path $dll)) { throw 'u paketu nema e_sqlite3.dll' }
+          Add-Type -Namespace Native -Name Sq -MemberDefinition '[DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibraryW(string path); [DllImport("e_sqlite3", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr sqlite3_libversion();'
+          if ([Native.Sq]::LoadLibraryW($dll) -eq [IntPtr]::Zero) { throw 'e_sqlite3.dll ne moze da se ucita' }
+          $version = [Runtime.InteropServices.Marshal]::PtrToStringAnsi([Native.Sq]::sqlite3_libversion())
+          Write-Host ("REZULTAT | SQLite u fajlu publish/LustreRadio/e_sqlite3.dll | {0} | SHA-256 {1}" -f $version, (Get-FileHash $dll -Algorithm SHA256).Hash.Substring(0, 16))
+          if ([version]$version -lt [version]'3.50.2') { throw "ranjiv SQLite u paketu: $version" }
       - name: Nadzor (integracioni test sa pravim procesima)
         shell: pwsh
-        timeout-minutes: 8
+        timeout-minutes: 14
         run: ./tests/integration/nadzor.ps1 -Bin (Resolve-Path publish/LustreRadio)
       - name: Paket za preuzimanje (radio sa interfejsom, proba)
         shell: pwsh

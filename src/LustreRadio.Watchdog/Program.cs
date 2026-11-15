@@ -13,7 +13,7 @@ namespace LustreRadio.Watchdog;
 /// Nadzor: jedini pokrece audio proces i vraca ga ako padne ili se zamrzne (spec. 2.2).
 /// Ako nadzor padne, audio proces nastavlja da svira; novi nadzor ga preuzima.
 /// Argumenti:
-///   (bez)            nadzor
+///   (bez)            nadzor (provera na 2 s; kvar posle 20 s cutanja i 5 uzastopnih neuspelih provera)
 ///   --stop           namerno zaustavljanje radija (do --start ili sledeceg paljenja racunara)
 ///   --start          ukida namerno zaustavljanje
 ///   --install-task   pravi zadatak u Task Scheduler-u za prijavljenog korisnika
@@ -24,12 +24,12 @@ namespace LustreRadio.Watchdog;
 public static class Program
 {
     private const string EngineProcessName = "LustreRadio.Engine";
-    private static readonly TimeSpan PollInterval = TimeSpan.FromSeconds(5);
+    private static readonly SupervisorSettings Settings = new();
 
     public static int Main(string[] args)
     {
         using var log = LogSetup.Create("watchdog");
-        var dataRoot = Environment.GetEnvironmentVariable(InstanceNames.DataRootVariable) is { Length: > 0 } custom ? custom : AppPaths.DefaultDataRoot;
+        var dataRoot = AppPaths.DefaultDataRoot;
 
         try
         {
@@ -74,7 +74,7 @@ public static class Program
     private static int Supervise(Logger log, string dataRoot)
     {
         var sessionId = Process.GetCurrentProcess().SessionId;
-        if (!SessionGuard.MayRun(sessionId, Environment.GetEnvironmentVariable(InstanceNames.AllowSessionZeroVariable)))
+        if (!SessionGuard.MayRun(sessionId))
         {
             log.Fatal("Nadzor je pokrenut u sesiji 0. Zadatak mora biti 'Run only when user is logged on'; izlazim.");
             return 2;
@@ -90,7 +90,8 @@ public static class Program
         log.Information("Nadzor radi; sesija {SessionId}; audio proces: {EnginePath}; podaci: {DataRoot}", sessionId, enginePath, dataRoot);
 
         var clock = new SystemMonotonicClock();
-        var policy = new SupervisorPolicy(clock, new SupervisorSettings());
+        var policy = new SupervisorPolicy(clock, Settings);
+        var cadence = Stopwatch.StartNew();
         IpcClient? client = null;
         using var exit = new ManualResetEventSlim();
         AppDomain.CurrentDomain.ProcessExit += (_, _) => exit.Set();
@@ -137,11 +138,6 @@ public static class Program
                     WaitForEngineGone(TimeSpan.FromSeconds(10));
                 }
 
-                if (decision.Action == SupervisorAction.KillAndRestart)
-                {
-                    Thread.Sleep(new SupervisorSettings().RestartDelay);
-                }
-
                 if (decision.Action is SupervisorAction.Start or SupervisorAction.KillAndRestart)
                 {
                     // dva uslova pre pokretanja: brava slobodna i nema procesa
@@ -165,7 +161,12 @@ public static class Program
                 log.Error(ex, "Greska u petlji nadzora.");
             }
 
-            exit.Wait(PollInterval);
+            // Fiksni raspored: sledeca provera pocinje na sledecem celom koraku od 2 s,
+            // bez obzira koliko je ova trajala. (Ranije "proveri pa cekaj 5 s": razmak je rastao
+            // bas kad audio proces ne odgovara, pa je otkrivanje kasnilo.)
+            var step = Settings.PollInterval.Ticks;
+            var next = TimeSpan.FromTicks(((cadence.Elapsed.Ticks / step) + 1) * step);
+            exit.Wait(next - cadence.Elapsed);
         }
 
         Drop(client);
@@ -187,17 +188,32 @@ public static class Program
 
     /// <summary>
     /// Provera sa tvrdim rokom: sta god da se desi sa vezom, petlja nadzora ne sme da stane.
-    /// Ako provera ne zavrsi na vreme, veza se napusta i racuna se da audio proces nije odgovorio.
+    /// Ako provera ne zavrsi na vreme, racuna se da audio proces nije odgovorio, a veza se
+    /// zatvara u pozadini kad zaostala provera zavrsi.
     /// </summary>
     private static (IpcClient? Client, RadioState? State) PollWithLimit(IpcClient? client, Logger log)
     {
+        _ = log;
         var poll = Task.Run(() => Poll(client));
-        if (poll.Wait(TimeSpan.FromSeconds(12)))
+        if (poll.Wait(Settings.PollTimeout))
         {
             return poll.Result;
         }
 
-        log.Warning("Provera audio procesa nije zavrsila za 12 s; veza se napusta.");
+        poll.ContinueWith(
+            finished =>
+            {
+                if (finished.Status == TaskStatus.RanToCompletion)
+                {
+                    Drop(finished.Result.Client);
+                }
+                else
+                {
+                    _ = finished.Exception;
+                    Drop(client);
+                }
+            },
+            TaskScheduler.Default);
         return (null, null);
     }
 
@@ -208,17 +224,17 @@ public static class Program
             if (client is not { IsConnected: true })
             {
                 Drop(client);
-                client = IpcClient.ConnectAsync(IpcProtocol.DefaultPipeName, TimeSpan.FromSeconds(2)).GetAwaiter().GetResult();
+                client = IpcClient.ConnectAsync(IpcProtocol.DefaultPipeName, TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
             }
 
-            var response = client.SendAsync("get-state", timeout: TimeSpan.FromSeconds(3)).GetAwaiter().GetResult();
+            var response = client.SendAsync("get-state", timeout: TimeSpan.FromSeconds(1)).GetAwaiter().GetResult();
             if (response.Ok != true)
             {
                 return (client, null);
             }
 
             // stanje stize zasebnom porukom; kratko sacekaj prvu
-            SpinWait.SpinUntil(() => client.LastState is not null, TimeSpan.FromSeconds(2));
+            SpinWait.SpinUntil(() => client.LastState is not null, TimeSpan.FromMilliseconds(300));
             return (client, client.LastState);
         }
         catch (Exception)
@@ -227,11 +243,17 @@ public static class Program
         }
     }
 
+    /// <summary>Zatvara vezu u pozadini; nikad ne ceka (cekanje bi pomerilo raspored provera).</summary>
     private static IpcClient? Drop(IpcClient? client)
     {
+        if (client is null)
+        {
+            return null;
+        }
+
         try
         {
-            client?.DisposeAsync().AsTask().Wait(TimeSpan.FromSeconds(2));
+            client.DisposeAsync().AsTask().ContinueWith(closed => _ = closed.Exception, TaskScheduler.Default);
         }
         catch (Exception)
         {
