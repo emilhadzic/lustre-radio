@@ -27,8 +27,13 @@ function WaitFor([scriptblock]$Condition, [double]$Seconds, [string]$What) {
     throw "NIJE ISPUNJENO za $Seconds s: $What"
 }
 function Step([string]$Text) { Write-Host "== $Text" }
+# Svi redovi dnevnika jednog programa, po vremenu. (Kad vise primeraka istog programa pise u isto vreme,
+# dnevnik se deli na vise fajlova, pa redosled fajlova nije redosled dogadjaja.)
 function LogLines([string]$Name) {
-    Get-ChildItem (Join-Path $logs "$Name-*.log") -ErrorAction SilentlyContinue | Sort-Object Name | ForEach-Object { Get-Content $_.FullName }
+    Get-ChildItem (Join-Path $logs "$Name-*.log") -ErrorAction SilentlyContinue |
+        ForEach-Object { Get-Content $_.FullName } |
+        Where-Object { $_ -match '^\d{4}-\d\d-\d\d \d\d:\d\d:\d\d\.\d{3} ' } |
+        Sort-Object { $_.Substring(0, 23) } -Stable
 }
 # Redovi dnevnika nadzora posle zadatog trenutka koji sadrze tekst; vraca vremena.
 function WatchdogEvents([DateTimeOffset]$After, [string]$Text) {
