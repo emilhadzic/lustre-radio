@@ -352,3 +352,25 @@ Podešavanja .NET (provera iz B0; spec. 3.4 traži Workstation GC bez concurrent
 - izmereno u dnevniku Engine-a na G: `GC server=False, concurrent=podrazumevano (uključen), režim=Interactive`;
 - ReadyToRun nije uključen u objavljivanju;
 - **odstupanje od specifikacije je prijavljeno vlasniku; ništa nije menjano** dok ne odobri.
+
+Merenje GC i ReadyToRun (G, run 43919606616, 16.11.2026.; ništa nije menjano u programu):
+
+| Varijanta | concurrent GC | Engine start (medijana 7) | UI start | Engine posle 60 s (privatna / radni skup / niti) | Engine+UI folder |
+|---|---|---|---|---|---|
+| A – sadašnje | da | 308 ms | 548 ms | 11,6 / 45,5 MB / 11 | 143,8 MB |
+| B – bez concurrent | ne | 236 ms | 522 ms | 11,6 / 46,1 MB / 14 | 143,8 MB |
+| C – bez concurrent + ReadyToRun | ne | 216 ms | 479 ms | 11,8 / 46,2 MB / 14 | 146,7 MB |
+
+Predlog (čeka odobrenje): varijanta C za Engine, UI i Watchdog, kako traži spec. 3.4. Na mini PC-u: NOT TESTED – ACCEPTED RISK.
+
+## Faza B, korak B1 (16.11.2026.) – šema 2, kopija pre nadogradnje, povratak na fazu A
+
+Trajno izdanje faze A: tag `faza-a-0.1.0` (grana `izdanje-faza-a`), SHA-256 u `docs/POVRATAK.md`, provereno na G. Povratak: `VRATI-FAZU-A.cmd` (ništa ne briše; stara baza ide u `backups\pre-povratka-<vreme>`).
+
+**Nalaz i odluka po planu (N5):** provera P2 (BEGIN IMMEDIATE mora biti odbijen na vezi samo za čitanje) ne prolazi u normalnom slučaju. SQLite 3.53.3 ga ne odbija; pravi upisi (INSERT, CREATE, user_version, VACUUM) se odbijaju (test B-184). Po uslovu plana rad bez nadogradnje je **isključen**: ako kopija ili nadogradnja ne uspe, Engine se ne pokreće, a baza ostaje šema 1 i netaknuta. Kod za rad bez nadogradnje je ostao, isključen (`ReadOnlyModeEnabled = false`), dok vlasnik ne odluči.
+
+Rezultati (G, run 43919606616): svi koraci prošli.
+- PASS (G): B-44/B-167, B-45, B-47, B-48, B-90, B-91, B-92, B-93 (2), B-94 (2), B-95, B-96, B-110, B-112, B-152/B-158 (3, nalaz: P2 ne prolazi, bajtovi isti), B-155a (izmenjeno očekivanje), B-155b, B-156, B-157, B-159, B-182, B-183 (6), B-184 (7), B-185, B-187, B-188, B-169.
+- NOT TESTED (isključen rad bez nadogradnje): B-150, B-151, B-180, B-181/B-186.
+- NOT TESTED (zavise od dnevnika, B2): B-153, B-154. B-183 stanje 7 nije pokriveno.
+- R: NOT TESTED. M: NOT TESTED – ACCEPTED RISK.
