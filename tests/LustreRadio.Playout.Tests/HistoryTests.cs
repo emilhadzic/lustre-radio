@@ -213,7 +213,7 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
         var records = JournalRecords();
         Assert.Single(records, r => r.Kind == JournalKind.Unconfirmed);
         Assert.Single(records, r => r.Kind == JournalKind.ProgramCrash);
-        Assert.Empty(PlaybackHistory.Aggregate(records).Values.Where(a => a.Terminal is null));
+        Assert.DoesNotContain(PlaybackHistory.Aggregate(records).Values, a => a.Terminal is null);
     }
 
     [Theory] // B-164: pad usred oporavka, na svakom koraku
