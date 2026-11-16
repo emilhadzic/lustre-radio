@@ -11,6 +11,9 @@ public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1
 
     /// <summary>Podaci za prikaz (sta svira); prenosi ih koordinator kad pesma stvarno krene.</summary>
     public object? Info { get; init; }
+
+    /// <summary>Putanja fajla (za probu diska sa istog volumena).</summary>
+    public string? Path { get; init; }
 }
 
 /// <summary>Zapis o tome sta je i kada pusteno (pozicija u izlaznom toku, u frejmovima).</summary>
@@ -255,7 +258,23 @@ public sealed class CrossfadeSequencer : IFrameProvider
             Interlocked.Add(ref _outFrames, advance);
         }
 
+        if (!_coordinator.Threaded)
+        {
+            _coordinator.ServiceInline(_outFrames); // bez niti: stanje (sta je krenulo) odmah azurno
+        }
+
         return done;
+    }
+
+    /// <summary>Sledeca pripremljena pesma, bez uzimanja. Bez posebnih niti koordinator se pita odmah (kao ranije reditelj).</summary>
+    private PreparedTrack? PeekNext()
+    {
+        if (!_coordinator.Threaded && _handoff.Peek() is null)
+        {
+            _coordinator.ServiceInline(_outFrames);
+        }
+
+        return _handoff.Peek();
     }
 
     /// <summary>
@@ -304,7 +323,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             return;
         }
 
-        if (_handoff.Peek() is null)
+        if (PeekNext() is null)
         {
             return; // sledeca jos nije spremna: zahtev ceka
         }
@@ -331,7 +350,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             return (int)Math.Min(chunk, untilTransition);
         }
 
-        if (_handoff.Peek() is null)
+        if (PeekNext() is null)
         {
             // Sledeca nije spremna kad pretapanje treba da pocne: proverava se cesce; posle 0,5 s pre kraja se ne pretapa.
             return remaining >= _shortestTransition ? (int)Math.Min(chunk, 1024) : chunk;
@@ -475,6 +494,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
     /// <summary>Uzima pripremljenu pesmu iz mesta za predaju (bez cekanja). False ako nijedna nije spremna.</summary>
     private bool TryStart(Deck deck, long fadeInFrames, long fadeStart, out TrackEvent? trackEvent)
     {
+        _ = PeekNext();
         var item = _handoff.Take();
         if (item is null)
         {

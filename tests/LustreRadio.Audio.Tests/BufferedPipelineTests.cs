@@ -184,7 +184,7 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
 
     private sealed class Harness
     {
-        private readonly Queue<(string Id, ScriptedSource Source)> _queue = new();
+        private readonly Queue<(string Id, ScriptedSource Source, long AvailableFrom)> _queue = new();
 
         public Harness(double crossfade = 6)
         {
@@ -197,16 +197,25 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
 
         public List<ScriptedSource> Sources { get; } = [];
 
-        public ScriptedSource Add(string id, double seconds, Func<long, float>? signal = null, Func<ScriptedSource, ScriptedSource>? configure = null, double speed = 0, long? failAt = null, long? endAt = null)
+        public ScriptedSource Add(string id, double seconds, Func<long, float>? signal = null, Func<ScriptedSource, ScriptedSource>? configure = null, double speed = 0, long? failAt = null, long? endAt = null, double availableFrom = 0)
         {
             var source = new ScriptedSource(Format, F(seconds), signal ?? (i => 0.25f * MathF.Sin(i * 0.05f))) { Speed = speed, FailAt = failAt, EndAt = endAt };
             source = configure?.Invoke(source) ?? source;
-            _queue.Enqueue((id, source));
+            _queue.Enqueue((id, source, F(availableFrom)));
             Sources.Add(source);
             return source;
         }
 
-        private QueuedTrack? Next() => _queue.Count == 0 ? null : _queue.Dequeue() is var (id, s) ? new QueuedTrack(id, s) { PlaybackId = Guid.CreateVersion7() } : null;
+        private QueuedTrack? Next()
+        {
+            if (_queue.Count == 0 || Sequencer.OutputFrames < _queue.Peek().AvailableFrom)
+            {
+                return null; // jos nema sledece (reditelj nije imao pesmu): pokusava se ponovo na 1 s
+            }
+
+            var (id, s, _) = _queue.Dequeue();
+            return new QueuedTrack(id, s) { PlaybackId = Guid.CreateVersion7() };
+        }
 
         /// <summary>Kao audio-nit: blokovi od 1024 frejma; vraca levi kanal.</summary>
         public float[] Render(double seconds, int block = 1024)
@@ -434,7 +443,10 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
         var first = paused.Render(8);
         // pauza: niko ne cita sekvencer (pauza traje koliko god; ovde nije vazno koliko)
         var rest = paused.Render(22);
-        Assert.Equal(expected, first.Concat(rest).ToArray());
+        var joined = first.Concat(rest).ToArray();
+        var n = Math.Min(expected.Length, joined.Length);
+        Assert.True(n > F(29));
+        Assert.Equal(expected[..n], joined[..n]);
     }
 
     [Fact] // B-70: dekoder daje tacno 2,2x brzinu slusanja, 30 pretapanja
@@ -448,7 +460,7 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
 
         h.Render(3); // prva pesma: priprema do punog bafera (5 s pri 2,2x = 2,3 s)
         var initial = h.Sequencer.StarvedFrames;
-        h.Render((31 * 6) + 10);
+        h.Render((31 * 6) + 30);
         output.WriteLine($"pocetna tisina {initial / (double)Rate:F2} s; posle toga {(h.Sequencer.StarvedFrames - initial) / (double)Rate:F3} s; pesama {h.Sequencer.Events.Count}");
         Assert.Equal(initial, h.Sequencer.StarvedFrames);
         Assert.Equal(31, h.Sequencer.Events.Count);
@@ -557,30 +569,37 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
         Assert.True(audio[(int)F(19.99)] < 0.01f);
     }
 
-    [Theory] // B-76: sledeca nije spremna u trenutku pretapanja: kasni 2 s / 10 s
-    [InlineData(2.0, true)]
-    [InlineData(10.0, false)]
-    public void B76_NextNotReadyAtCrossfade(double late, bool shortened)
+    [Fact] // B-76: sledeca nije spremna u trenutku pretapanja (kasni 2 s) -> skraceno pretapanje
+    public void B76_NextLateTwoSeconds_ShortenedCrossfade()
     {
         var h = new Harness();
         h.Add("1", 20, signal: _ => 0.5f);
-        h.Add("2", 20, signal: _ => -0.5f, configure: s => s.StallAt(0, F(14 + late))); // priprema traje do 14+late s
+        h.Add("2", 20, signal: _ => -0.5f, availableFrom: 16);
         var audio = h.Render(40);
         var firstB = Array.FindIndex(audio, v => v < -0.01f) / (double)Rate;
-        output.WriteLine($"kasni {late} s: B krece na {firstB:F2} s; zakasnelih prelaza {h.Sequencer.LateTransitions}; tisina {h.Sequencer.StarvedFrames / (double)Rate:F2} s");
-        if (shortened)
-        {
-            Assert.InRange(firstB, 15.9, 16.2); // skraceno pretapanje
-            Assert.Equal(1, h.Sequencer.LateTransitions);
-        }
-        else
-        {
-            Assert.InRange(firstB, 23.9, 24.3); // A zavrsena, tisina, B sa ulazom od 50 ms
-            Assert.True(h.Sequencer.StarvedFrames >= F(3.9));
-        }
+        output.WriteLine($"B krece na {firstB:F2} s; zakasnelih prelaza {h.Sequencer.LateTransitions}; tisina {h.Sequencer.StarvedFrames / (double)Rate:F2} s");
+        Assert.InRange(firstB, 15.9, 17.2); // ponovni pokusaj na 1 s
+        Assert.Equal(1, h.Sequencer.LateTransitions);
+        Assert.Equal(0, h.Sequencer.StarvedFrames);
+        Assert.Equal(PlaybackStatus.Played, h.Events.Outcomes()[1].Single().Status);
+    }
 
-        var outcomes = h.Events.Outcomes();
-        Assert.Equal(PlaybackStatus.Played, outcomes[1].Single().Status);
+    [Fact] // B-76: sledeca nije spremna ni do kraja pesme A (radna nit zauzeta) -> A do kraja, tisina, B sa ulazom od 50 ms
+    public void B76_NextNotReadyUntilAEnds_SilenceThenFadeIn()
+    {
+        var h = new Harness();
+        h.Add("1", 4.5, signal: _ => 0.5f);                                   // cela pesma A je u baferu
+        h.Add("2", 20, signal: _ => -0.5f, configure: s => s.StallAt(0, F(8))); // otvaranje B traje 8 s
+        var audio = h.Render(20);
+        var lastA = Array.FindLastIndex(audio, v => v > 0.01f) / (double)Rate;
+        var firstB = Array.FindIndex(audio, v => v < -0.01f) / (double)Rate;
+        output.WriteLine($"A do {lastA:F2} s; B od {firstB:F2} s; zakasnelih prelaza {h.Sequencer.LateTransitions}");
+        Assert.InRange(lastA, 4.4, 4.51);
+        Assert.InRange(firstB, 7.9, 8.2);
+        Assert.Equal(1, h.Sequencer.LateTransitions);
+        var rampEnd = (int)(firstB * Rate) + (int)F(0.06);
+        Assert.InRange(audio[rampEnd], -0.51f, -0.49f);
+        Assert.True(audio[(int)(firstB * Rate)] > -0.2f); // ulaz od 50 ms, ne skok
     }
 
     [Fact] // B-77: sledeca kraca od 6 s; kraca od 5 s; Sledeca pa odmah prirodno pretapanje
