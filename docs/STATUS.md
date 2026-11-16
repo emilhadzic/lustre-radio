@@ -389,3 +389,39 @@ Sve NOT TESTED stavke posle B1:
 | B-102 | samo zabeleženo | zbir 66,3 MB u mirovanju; budžet 240 MB nije potvrđen |
 | R-B1 – R-B10 | NOT TESTED | računar vlasnika |
 | sve na mini PC-u | NOT TESTED – ACCEPTED RISK | – |
+
+## Faza B, korak B2 (16.11.2026.) – istorija emitovanja
+
+Urađeno (grana `faza-b`): crna kutija (`journal\crna_kutija.bin`, fajl mapiran u memoriju, 10.000 zapisa po 128 bajtova), čuvar crne kutije (upis na disk na 5 s), pisar (crna kutija → `emitovanje.jsonl` sa potvrdom diska → baza), identifikatori `playback_id` i `rid`, četiri statusa, oporavak pri pokretanju (crna kutija, `prekid_programa`, `nepotvrdjeno` a/b/c, `gubitak`), red „Istorija“ u „Proveri sistema“. Upis istorije u bazu je skinut sa audio-niti: reditelj i sekvencer samo upisuju zapis u crnu kutiju (bez brave, bez zauzimanja memorije, bez baze). Varijanta C (GC/ReadyToRun) uvedena u B2.0.
+
+Rezultati (G, run 43944130825): build i svi koraci prošli; 621 test prošao, 4 preskočena (rad bez nadogradnje, isključen odlukom 1).
+
+| Test | Stanje | Napomena |
+|---|---|---|
+| B-31 | PASS (G) | 6 upisa po 5 s; najduži poziv događaja 0,01 ms |
+| B-32 | PASS (G) | skraćeno: baza odbija 10 s (ne 2 min), 40 pesama |
+| B-33, B-34, B-35 | PASS (G) | B-34: 5.001 događaj dok baza ne radi |
+| B-36, B-37 | PASS (G) | presečen poslednji red na svakom bajtu; neispravan red u sredini |
+| B-38, B-39 | PASS (G) | dnevnik ne može da se piše / disk pun (oponašano u našem kodu); upozorenje ispod 200 MB |
+| B-40, B-41 | PASS (G) | arhiviranje samo kad nijedna pesma nije otvorena |
+| B-42 | PASS (G) | pad u 4 tačke toka jednog događaja (oponašan u istom procesu) |
+| B-160 – B-166, B-168 | PASS (G) | B-160 i B-166 i kroz pravi radio (offline) |
+| B-207 | PASS (G) | |
+| B-211 | PASS (G) | tačno 500 izgubljenih; zapis `gubitak` |
+| B-212 | PASS (G) | 100.000 pesama kroz crnu kutiju: 0 B zauzete memorije po događaju, veličina stalna; 5.000 kroz ceo put |
+| B-221, B-222 | PASS (G) | **pravi pad procesa** (Environment.FailFast, probni program `LustreRadio.CrashProbe`, nije u paketu) |
+| B-225, B-226 | PASS (G) | |
+| B-48, B-101 – B-103, B-110, B-112, B-155, B-157, B-185 | PASS (G) | ponovljeno posle B2; B-101: Engine u mirovanju 18 MB |
+| G-sim (4 scenarija) | prošlo na G-sim | brojač „baza“ na audio-niti 0 (u B0: 5). Simulacija ne uključuje crnu kutiju. Nije test na hardveru. |
+| Nestanak struje / pad Windows-a | NOT TESTED | ne može na G |
+| R-B10 | NOT TESTED | računar vlasnika |
+| Mini PC | NOT TESTED – ACCEPTED RISK | – |
+
+Izvedbene odluke u B2 (u okviru plana; bez izmene specifikacije):
+- Do B3/B4 nema koordinatora ni kartica: zapise u crnu kutiju upisuju reditelj i sekvencer (na audio-niti). Mesto se rezerviše atomskim brojačem, pa crna kutija prima više pisaca; kad stigne koordinator, on je jedini pisac.
+- Naziv programa u crnoj kutiji je najviše 24 bajta (današnji nazivi su do 20).
+- Pesma koja svira pri urednom gašenju programa dobija PREKINUTO – zatvaranje (spisak razloga u planu nema poseban razlog za gašenje).
+- `odbacena` se potvrđuje na disku odmah (strože od plana).
+- Pravilo „pesma kreće kad je `pripremljena` potvrđena ili posle 2 s“ dolazi sa karticama (B4); B-86 je u B4.
+- Dugme Sledeća tokom repa (red 4 tabele statusa) danas sekvencer ne prihvata (postojeće ponašanje); dolazi u B3.
+- Postojeći testovi radija čitaju istoriju posle završetka emitovanja (red u bazi nastaje tek kad je ishod poznat); očekivanja nisu menjana, osim broja redova u „Proveri sistema“ (9 → 10).
