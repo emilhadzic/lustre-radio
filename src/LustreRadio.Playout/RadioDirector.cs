@@ -60,6 +60,7 @@ public sealed class RadioDirector
     private readonly Action<string> _log;
     private readonly RotationState _state = new();
     private readonly HashSet<string> _unplayable = [];
+    private readonly Dictionary<string, DateTime> _quarantine = [];
 
     private WeeklySchedule _schedule;
     private ManualOverride? _override;
@@ -247,7 +248,8 @@ public sealed class RadioDirector
 
             for (var attempt = 0; attempt < _options.MaxOpenAttempts; attempt++)
             {
-                var available = _catalog.Select(t => _unplayable.Contains(t.Id) ? t with { Broadcastable = false } : t).ToList();
+                var nowUtc = now.ToUniversalTime();
+                var available = _catalog.Select(t => _unplayable.Contains(t.Id) || (_quarantine.TryGetValue(t.Id, out var until) && until > nowUtc) ? t with { Broadcastable = false } : t).ToList();
                 var pick = _rotation.Pick(available, _state, decision.Program, new DateTimeOffset(now), _options.Rotation);
                 if (pick is null)
                 {
@@ -257,6 +259,7 @@ public sealed class RadioDirector
 
                 var record = _records[pick.Track.Id];
                 var queued = TryOpen(record, startSeconds: 0);
+                queued = queued is null ? null : queued with { Path = record.Path };
                 if (queued is null)
                 {
                     continue;
@@ -302,6 +305,11 @@ public sealed class RadioDirector
                 return null;
             }
 
+            if (_quarantine.TryGetValue(snapshot.TrackId, out var quarantinedUntil) && quarantinedUntil > now.ToUniversalTime())
+            {
+                return null; // pesma u karantinu se ne nastavlja od snimka stanja
+            }
+
             var info = _catalog.FirstOrDefault(t => t.Id == snapshot.TrackId);
             if (info is not { Broadcastable: true, Blocked: false } || record.DurationSeconds - snapshot.PositionSeconds < 2)
             {
@@ -311,12 +319,121 @@ public sealed class RadioDirector
             var queued = TryOpen(record, snapshot.PositionSeconds);
             if (queued is not null)
             {
+                queued = queued with { Path = record.Path };
                 queued = queued with { PlaybackId = Guid.CreateVersion7() };
                 History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, 0, decision.Program?.Name);
                 queued = queued with { Info = new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds) };
             }
 
             return queued;
+        }
+    }
+
+    /// <summary>
+    /// Dekodiranje je prestalo pre kraja (slucaj 1, plan 2.7). Razvrstava gresku; u pozadini (snizen prioritet) proverava
+    /// eksplicitnu gresku ili ponovo meri duzinu. U "3 greske" ulazi samo potvrdjena eksplicitna greska.
+    /// </summary>
+    public Task<FaultCheck?> HandleDecodeFailure(DecodeFailure failure)
+    {
+        ArgumentNullException.ThrowIfNull(failure);
+        TrackRecord? record;
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            _records.TryGetValue(failure.Track.Id, out record);
+        }
+
+        var kind = DecodeFailures.Classify(failure.Reason, failure.Error);
+        if (record is null)
+        {
+            return Task.FromResult<FaultCheck?>(null);
+        }
+
+        _log($"Dekodiranje prestalo ({kind}, {failure.Reason}) na {failure.PositionFrames / (double)_format.SampleRate:F1} s: {record.Path}");
+        if (kind is not (DecodeFailureKind.ExplicitDecoderError or DecodeFailureKind.UnexpectedEnd))
+        {
+            return Task.FromResult<FaultCheck?>(null);
+        }
+
+        var reopen = DecoderFactory ?? (r => Decoders.Open(r.Path, _format, r.DecoderId));
+        return Task.Factory.StartNew<FaultCheck?>(
+            () =>
+            {
+                Thread.CurrentThread.Priority = ThreadPriority.BelowNormal;
+                if (kind == DecodeFailureKind.UnexpectedEnd)
+                {
+                    var measured = DecodeFailures.Measure(() => reopen(record), TimeSpan.FromMinutes(2));
+                    if (measured >= 0 && Math.Abs(measured - failure.PositionFrames) <= _format.SampleRate / 10)
+                    {
+                        var native = record.SampleRate > 0 ? (long)Math.Round(measured * (double)record.SampleRate / _format.SampleRate) : measured;
+                        _db.Tracks.SetExactFrames(record.Id, native);
+                        _log($"Duzina iz skeniranja nije bila tacna; ispravljeno: {record.Path}");
+                    }
+                    else
+                    {
+                        _log($"Prerani kraj se nije ponovio: {record.Path}");
+                    }
+
+                    return null;
+                }
+
+                var check = DecodeFailures.Confirm(() => reopen(record), () => Unchanged(record), failure.Error!, failure.PositionFrames, _format, TimeSpan.FromSeconds(60));
+                switch (check)
+                {
+                    case FaultCheck.Confirmed:
+                        ReportFault(failure.Track.Id);
+                        break;
+                    case FaultCheck.FileChanged:
+                        _log($"Fajl je menjan posle skeniranja; ne broji se, ponovo se skenira: {record.Path}");
+                        AudioThreadGuard.Touch(AudioViolation.Lock);
+                        lock (_sync)
+                        {
+                            _unplayable.Add(failure.Track.Id);
+                        }
+
+                        break;
+                    default:
+                        _log($"Neponovljena greska ({check}); ne broji se: {record.Path}");
+                        break;
+                }
+
+                return check;
+            },
+            CancellationToken.None,
+            TaskCreationOptions.LongRunning,
+            TaskScheduler.Default);
+    }
+
+    /// <summary>Samo za testove: otvaranje fajla za proveru greske (u programu: isti dekoder kao pri pustanju).</summary>
+    internal Func<TrackRecord, ISampleSource>? DecoderFactory { get; set; }
+
+    private static bool Unchanged(TrackRecord record)
+    {
+        var info = new FileInfo(record.Path);
+        return info.Exists && info.Length == record.SizeBytes && info.LastWriteTimeUtc == record.LastWriteUtc;
+    }
+
+    /// <summary>Putanje svih pesama (za probu diska sa istog volumena).</summary>
+    public IReadOnlyList<string> LibraryPaths()
+    {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            return [.. _records.Values.Select(r => r.Path)];
+        }
+    }
+
+    /// <summary>Karantin (D8-4): pesme koje se ne planiraju do zadatog trenutka (do ponoci).</summary>
+    public void SetQuarantine(IEnumerable<string> trackIds, DateTime untilUtc)
+    {
+        ArgumentNullException.ThrowIfNull(trackIds);
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            foreach (var id in trackIds)
+            {
+                _quarantine[id] = untilUtc;
+            }
         }
     }
 

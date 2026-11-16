@@ -17,6 +17,9 @@ public static class Program
     public const int ExitWrongSession = 2;
     public const int ExitAlreadyRunning = 3;
 
+    /// <summary>Kontrolisano ponovno pokretanje posle zaglavljenih poziva dekodera (D7-4); nadzor pokrece Engine ponovo.</summary>
+    public const int ExitControlledRestart = 4;
+
     public static int Main(string[] args)
     {
         using var log = LogSetup.Create("engine");
@@ -67,8 +70,20 @@ public static class Program
             host.IndexInBackground();
 
             using var exit = new ManualResetEventSlim();
+            var restart = false;
+            host.RestartRequired += () =>
+            {
+                restart = true;
+                exit.Set();
+            };
             AppDomain.CurrentDomain.ProcessExit += (_, _) => exit.Set();
             exit.Wait();
+            if (restart)
+            {
+                log.Warning("Kontrolisano ponovno pokretanje (zastoj dekodera); nadzor pokrece Engine ponovo.");
+                return ExitControlledRestart;
+            }
+
             return 0;
         }
         catch (Exception ex)

@@ -121,6 +121,10 @@ public sealed class TrackStore
     public void SetFavorite(long id, bool favorite) => _db.Execute("UPDATE tracks SET favorite = $f WHERE id = $id", ("$f", favorite ? 1 : 0), ("$id", id));
 
     /// <summary>Belezi gresku pustanja. Vraca novi broj gresaka.</summary>
+    /// <summary>Ispravka duzine posle ponovnog merenja (B-190): prerani kraj se ponovio na istom mestu.</summary>
+    public void SetExactFrames(long id, long frames) =>
+        _db.Execute("UPDATE tracks SET exact_frames = $f WHERE id = $id", ("$f", frames), ("$id", id));
+
     public int RecordFault(long id) =>
         (int)_db.Scalar<long>("UPDATE tracks SET fault_count = fault_count + 1 WHERE id = $id RETURNING fault_count", ("$id", id));
 

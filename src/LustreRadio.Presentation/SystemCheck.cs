@@ -33,9 +33,15 @@ public static class SystemCheck
         if (connected)
         {
             var s = state!;
-            lines.Add(s.Output == "Disconnected" || (string.IsNullOrEmpty(s.Device) && s.OnAir)
-                ? new(Name(T.CheckSpeaker), Texts.Get(language, T.CheckSpeakerMissing), Health.Problem)
-                : new(Name(T.CheckSpeaker), string.IsNullOrEmpty(s.Device) ? ok : s.Device!, Health.Good));
+            lines.Add(s.AudioStall switch
+            {
+                "ceka-disk" => new(Name(T.CheckSpeaker), Texts.Get(language, T.CheckSoundStoppedDisk), Health.Problem),
+                "ceka-procesor" => new(Name(T.CheckSpeaker), Texts.Get(language, T.CheckSoundStoppedCpu), Health.Problem),
+                "uzrok-nije-utvrdjen" => new(Name(T.CheckSpeaker), Texts.Get(language, T.CheckSoundStoppedUnknown), Health.Problem),
+                _ => s.Output == "Disconnected" || (string.IsNullOrEmpty(s.Device) && s.OnAir)
+                    ? new(Name(T.CheckSpeaker), Texts.Get(language, T.CheckSpeakerMissing), Health.Problem)
+                    : new(Name(T.CheckSpeaker), string.IsNullOrEmpty(s.Device) ? ok : s.Device!, Health.Good),
+            });
 
             lines.Add(new(
                 Name(T.CheckTracks),

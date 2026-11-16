@@ -238,6 +238,11 @@ public sealed class PlayJournal : IDisposable
                 json.WriteString("od", new DateTime(r.Frame, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture));
                 json.WriteString("do", new DateTime(r.TimeTicks, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture));
             }
+            else if (r.Kind == JournalKind.Quarantine)
+            {
+                json.WriteNumber("pesma", r.Track);
+                json.WriteString("do", new DateTime(r.Frame, DateTimeKind.Utc).ToString("O", CultureInfo.InvariantCulture));
+            }
             else if (r.Kind == JournalKind.Lost)
             {
                 json.WriteNumber("broj", r.Track);
@@ -250,7 +255,7 @@ public sealed class PlayJournal : IDisposable
                 json.WriteNumber("pesma", r.Track);
             }
 
-            if (r.Kind is not (JournalKind.ProgramCrash or JournalKind.Lost))
+            if (r.Kind is not (JournalKind.ProgramCrash or JournalKind.Lost or JournalKind.Quarantine))
             {
                 json.WriteNumber("frejm", r.Frame);
             }
@@ -341,6 +346,11 @@ public sealed class PlayJournal : IDisposable
             {
                 record.PlaybackIdA = Guid.ParseExact(root.GetProperty("pokretanje").GetString()!, "N");
                 record.Frame = Time(root, "od");
+            }
+            else if (record.Kind == JournalKind.Quarantine)
+            {
+                record.Track = root.GetProperty("pesma").GetInt64();
+                record.Frame = Time(root, "do");
             }
             else if (record.Kind == JournalKind.Lost)
             {

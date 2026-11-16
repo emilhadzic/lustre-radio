@@ -576,9 +576,10 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
         h.Add("1", 20, signal: _ => 0.5f);
         h.Add("2", 20, signal: _ => -0.5f, availableFrom: 16);
         var audio = h.Render(40);
-        var firstB = Array.FindIndex(audio, v => v < -0.01f) / (double)Rate;
+        var firstB = h.Events.Records.Single(r => r.Kind == JournalKind.Crossfade).Frame / (double)Rate; // pocetak (skracenog) pretapanja
         output.WriteLine($"B krece na {firstB:F2} s; zakasnelih prelaza {h.Sequencer.LateTransitions}; tisina {h.Sequencer.StarvedFrames / (double)Rate:F2} s");
         Assert.InRange(firstB, 15.9, 17.2); // ponovni pokusaj na 1 s
+        Assert.True(audio.Length > F(20));
         Assert.Equal(1, h.Sequencer.LateTransitions);
         Assert.Equal(0, h.Sequencer.StarvedFrames);
         Assert.Equal(PlaybackStatus.Played, h.Events.Outcomes()[1].Single().Status);

@@ -174,6 +174,11 @@ public sealed class EngineHost : IDisposable, IRadioControl
             _director.Schedule = AlwaysOpenSchedule(_director.Schedule);
         }
 
+        foreach (var (track, until) in History.ActiveQuarantine(DateTime.UtcNow))
+        {
+            _director.SetQuarantine([track.ToString(CultureInfo.InvariantCulture)], until);
+        }
+
         _director.TrackStarted += playing =>
         {
             _nowPlaying = playing;
@@ -385,6 +390,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 HistoryLostToLocal = (History.Box.LostLastUtc ?? History.RecoveryResult.LostToUtc)?.ToLocalTime(),
                 HistoryInvalidLines = History.RecoveryResult.InvalidJournalLines,
                 HistoryLowSpace = History.LowSpace,
+                AudioStall = _session?.Coordinator.StallStatus,
             };
         }
     }
@@ -485,8 +491,55 @@ public sealed class EngineHost : IDisposable, IRadioControl
         _log("Cuvar audio-niti (samo broji): " + AudioThreadGuard.Describe());
     }
 
+    private RestartRequest? _restart;
+
+    /// <summary>Engine treba da izadje radi kontrolisanog ponovnog pokretanja (nadzor ga pokrece ponovo).</summary>
+    public event Action? RestartRequired;
+
+    /// <summary>
+    /// Kontrolisano ponovno pokretanje (D7-4, D8-4): zaglavljene pesme idu u karantin do ponoci (najvise polovina
+    /// dozvoljenih), zapisi <c>odbacena</c> i <c>gasenje – zastoj dekodera</c>, zatim izlazak.
+    /// </summary>
+    private void ControlledRestart(RestartRequest request)
+    {
+        var director = _director!;
+        _log("Kontrolisano ponovno pokretanje: " + request.Reason);
+        var nowUtc = DateTime.UtcNow;
+        var midnightUtc = DateTime.Today.AddDays(1).ToUniversalTime();
+        var limit = director.BroadcastableCount / 2;
+        var active = History.ActiveQuarantine(nowUtc);
+        var count = active.Count;
+        foreach (var id in request.StuckTracks.Distinct())
+        {
+            if (!long.TryParse(id, NumberStyles.Integer, CultureInfo.InvariantCulture, out var number) || active.ContainsKey(number))
+            {
+                continue;
+            }
+
+            if (count >= limit)
+            {
+                _log($"Karantin pun (najvise {limit}); pesma ostaje u planu: {id}");
+                continue;
+            }
+
+            History.Quarantine(number, midnightUtc);
+            count++;
+            _log($"Pesma u karantinu do ponoci: {id}");
+        }
+
+        EndSession("zastoj dekodera", Core.History.StopReason.DecoderStall);
+        History.Shutdown(Core.History.StopReason.DecoderStall);
+        RestartRequired?.Invoke();
+    }
+
     private void Step()
     {
+        if (Interlocked.Exchange(ref _restart, null) is { } restart)
+        {
+            ControlledRestart(restart);
+            return;
+        }
+
         var director = _director!;
         if (_session is null)
         {
@@ -526,7 +579,9 @@ public sealed class EngineHost : IDisposable, IRadioControl
 
     private void StartSession(RadioDirector director)
     {
-        var session = new RadioSession(director, _format, director.LoadSnapshot(), realtime: true, log: _log);
+        var session = new RadioSession(director, _format, director.LoadSnapshot(), realtime: true, log: _log,
+            diskProbe: new VolumeDiskProbe(director.LibraryPaths), threadInspector: new WindowsThreadInspector());
+        session.RestartRequested += request => Interlocked.Exchange(ref _restart, request);
         var ring = new FloatRingBuffer(65536);
         var pauseGate = new PauseGate(session.Output);
         var volume = new VolumeControl(pauseGate, _volume);
@@ -546,7 +601,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
         output.Start();
     }
 
-    private void EndSession(string reason)
+    private void EndSession(string reason, Core.History.StopReason stop = Core.History.StopReason.Closing)
     {
         if (_session is null)
         {
@@ -556,7 +611,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
         _log("Emitovanje zavrseno: " + reason + ".");
         _output?.Dispose();
         _pump?.Dispose();
-        _session.End(Core.History.StopReason.Closing);
+        _session.End(stop);
         _output = null;
         _pump = null;
         _session = null;

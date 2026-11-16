@@ -934,7 +934,15 @@ internal sealed class ThreadedWorker : WorkerHost
     /// <summary>Windows broj niti (za stanje niti i procesorsko vreme).</summary>
     public int NativeId => _nativeId;
 
-    public void Start() => _thread.Start();
+    public void Start()
+    {
+        _thread.Start();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (_nativeId == 0 && watch.ElapsedMilliseconds < 2000)
+        {
+            Thread.Sleep(1); // broj niti je potreban pre prvog posla (procesorsko vreme na pocetku poziva)
+        }
+    }
 
     public override void Abandon()
     {

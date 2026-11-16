@@ -163,6 +163,28 @@ public sealed class PlaybackHistory : IPlaybackEvents, IDisposable
         Box.TryAppend(ref record);
     }
 
+    /// <summary>Karantin do ponoci (upisuje se u dnevnik, pa vazi i posle ponovnog pokretanja).</summary>
+    public void Quarantine(long trackId, DateTime untilUtc)
+    {
+        var record = new JournalRecord { Kind = JournalKind.Quarantine, Track = trackId, Frame = untilUtc.Ticks, TimeTicks = _utcNow().Ticks };
+        Box.TryAppend(ref record);
+        lock (_quarantine)
+        {
+            _quarantine[trackId] = untilUtc;
+        }
+    }
+
+    /// <summary>Pesme u karantinu u ovom trenutku (iz dnevnika i iz ovog pokretanja).</summary>
+    public IReadOnlyDictionary<long, DateTime> ActiveQuarantine(DateTime nowUtc)
+    {
+        lock (_quarantine)
+        {
+            return _quarantine.Where(q => q.Value > nowUtc).ToDictionary(q => q.Key, q => q.Value);
+        }
+    }
+
+    private readonly Dictionary<long, DateTime> _quarantine = [];
+
     public void Discarded(Guid playbackId, long trackId, StopReason reason)
     {
         var record = new JournalRecord { Kind = JournalKind.Discarded, PlaybackId = playbackId, Track = trackId, Reason = reason, TimeTicks = _utcNow().Ticks };
@@ -268,6 +290,11 @@ public sealed class PlaybackHistory : IPlaybackEvents, IDisposable
     {
         var all = Journal.ReadAll().Records;
         var now = _utcNow();
+        foreach (var q in all.Where(r => r.Kind == JournalKind.Quarantine && r.Frame > now.Ticks))
+        {
+            _quarantine[q.Track] = new DateTime(q.Frame, DateTimeKind.Utc);
+        }
+
         var generated = new List<JournalRecord>();
 
         // 2. prekid_programa za svako ranije pokretanje bez zapisa gasenje (i bez vec upisanog prekid_programa za njega)
@@ -352,6 +379,15 @@ public sealed class PlaybackHistory : IPlaybackEvents, IDisposable
             try
             {
                 archived = Journal.ArchiveIfLarge(now);
+                if (archived is not null)
+                {
+                    // aktivan karantin mora da ostane u tekucem dnevniku
+                    foreach (var (track, until) in _quarantine.Where(q => q.Value > now).ToList())
+                    {
+                        var record = new JournalRecord { Kind = JournalKind.Quarantine, Track = track, Frame = until.Ticks, TimeTicks = now.Ticks };
+                        Box.TryAppend(ref record);
+                    }
+                }
             }
             catch (IOException ex)
             {

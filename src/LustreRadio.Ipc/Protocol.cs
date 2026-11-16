@@ -112,6 +112,9 @@ public sealed record RadioState
 
     /// <summary>Na disku dnevnika je manje od 200 MB.</summary>
     public bool HistoryLowSpace { get; init; }
+
+    /// <summary>Zvuk ceka zbog zastoja (B3): "ceka-disk", "ceka-procesor", "uzrok-nije-utvrdjen"; null kad ne ceka.</summary>
+    public string? AudioStall { get; init; }
 }
 
 /// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>

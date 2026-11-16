@@ -16,6 +16,9 @@ public enum JournalKind : byte
     ProgramCrash = 8,
     Unconfirmed = 9,
     Lost = 10,
+
+    /// <summary>Karantin do ponoci (D8-4): <see cref="JournalRecord.Track"/> je pesma, <see cref="JournalRecord.Frame"/> kraj karantina (ticks, UTC).</summary>
+    Quarantine = 11,
 }
 
 /// <summary>Razlog prekida, odbacivanja ili gasenja.</summary>
@@ -102,6 +105,7 @@ public struct JournalRecord
         JournalKind.ProgramCrash => "prekid_programa",
         JournalKind.Unconfirmed => "nepotvrdjeno",
         JournalKind.Lost => "gubitak",
+        JournalKind.Quarantine => "karantin",
         _ => "nepoznato",
     };
 

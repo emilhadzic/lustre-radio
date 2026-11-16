@@ -66,6 +66,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private bool _transition;
     private long _transitionElapsed;
     private bool _incomingStarved;
+    private bool _waitedForNext;
     private long _pendingFadeIn;
     private long _outFrames;
     private volatile bool _skipRequested;
@@ -353,17 +354,18 @@ public sealed class CrossfadeSequencer : IFrameProvider
         if (PeekNext() is null)
         {
             // Sledeca nije spremna kad pretapanje treba da pocne: proverava se cesce; posle 0,5 s pre kraja se ne pretapa.
+            _waitedForNext = true;
             return remaining >= _shortestTransition ? (int)Math.Min(chunk, 1024) : chunk;
         }
 
-        if (untilTransition < 0 && remaining < _shortestTransition)
+        if (_waitedForNext)
         {
-            return chunk; // prekasno za pretapanje: A se zavrsi, B krece sa ulazom od 50 ms
-        }
+            if (remaining < _shortestTransition)
+            {
+                return chunk; // prekasno za pretapanje: A se zavrsi, B krece sa ulazom od 50 ms
+            }
 
-        if (untilTransition < 0)
-        {
-            Interlocked.Increment(ref _lateTransitions);
+            Interlocked.Increment(ref _lateTransitions); // skraceno pretapanje
         }
 
         BeginTransition(Math.Max(1, Math.Min(_crossfadeFrames, remaining)));
@@ -393,6 +395,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
         _current.StartFadeOut(fadeFrames);
         _transition = true;
+        _waitedForNext = false;
         _transitionElapsed = 0;
         _incomingStarved = false;
         if (_incomingEvent is { } b)
@@ -444,6 +447,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
         _incomingEvent = null;
         _transition = false;
         _incomingStarved = false;
+        _waitedForNext = false;
     }
 
     private void CloseCurrent()

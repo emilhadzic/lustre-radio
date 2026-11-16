@@ -79,7 +79,7 @@ public sealed class RadioSession
     private readonly bool _realtime;
 
     /// <param name="realtime">true: koordinator i radna nit rade na svojim nitima (rad programa); false: priprema unapred, bez niti (testovi).</param>
-    public RadioSession(RadioDirector director, AudioFormat format, PlaybackSnapshot? snapshot = null, bool realtime = false, Action<string>? log = null)
+    public RadioSession(RadioDirector director, AudioFormat format, PlaybackSnapshot? snapshot = null, bool realtime = false, Action<string>? log = null, IDiskProbe? diskProbe = null, IThreadInspector? threadInspector = null)
     {
         _realtime = realtime;
         _history = director.History;
@@ -94,6 +94,10 @@ public sealed class RadioSession
 
         _coordinator = new Coordinator(format, Next, director.Options.Coordinator, _history, threaded: realtime, log);
         _coordinator.TrackStarted += track => director.NotifyStarted(track.Info);
+        _coordinator.DiskProbe = diskProbe;
+        _coordinator.ThreadInspector = threadInspector;
+        _coordinator.DecodeFailed += failure => _ = director.HandleDecodeFailure(failure);
+        _coordinator.RestartRequested += request => RestartRequested?.Invoke(request);
         _sequencer = new CrossfadeSequencer(
             format,
             _coordinator,
@@ -114,6 +118,11 @@ public sealed class RadioSession
     public bool Ended => _fader.Ended;
 
     public void Skip() => _sequencer.RequestSkip();
+
+    /// <summary>Kontrolisano ponovno pokretanje Engine-a (posle zaglavljenih poziva dekodera; D7-4).</summary>
+    public event Action<RestartRequest>? RestartRequested;
+
+    public Coordinator Coordinator => _coordinator;
 
     /// <summary>
     /// Kraj emitovanja (zvuk je vec zaustavljen): pesme u deckovima dobijaju PREKINUTO – zatvaranje,
@@ -141,7 +150,8 @@ public sealed class RadioSession
 
         foreach (var e in events)
         {
-            if ((e.Faulted || e.FailedToLoad) && _reported.Add(e))
+            // B3: greska tokom pustanja se broji tek kad je potvrdjena (DecodeFailed -> HandleDecodeFailure)
+            if (e.FailedToLoad && _reported.Add(e))
             {
                 _director.ReportFault(e.Id);
             }
