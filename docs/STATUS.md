@@ -361,7 +361,7 @@ Merenje GC i ReadyToRun (G, run 43919606616, 16.11.2026.; ništa nije menjano u 
 | B – bez concurrent | ne | 236 ms | 522 ms | 11,6 / 46,1 MB / 14 | 143,8 MB |
 | C – bez concurrent + ReadyToRun | ne | 216 ms | 479 ms | 11,8 / 46,2 MB / 14 | 146,7 MB |
 
-Predlog (čeka odobrenje): varijanta C za Engine, UI i Watchdog, kako traži spec. 3.4. Na mini PC-u: NOT TESTED – ACCEPTED RISK.
+**Odluka vlasnika 16.11.2026. 18:57: odobrena varijanta C** za Engine, UI i Watchdog (spec. 3.4). Uvedena u B2.0; build proverava `System.GC.Concurrent=false` i ReadyToRun za sva tri programa. Na mini PC-u: NOT TESTED – ACCEPTED RISK.
 
 ## Faza B, korak B1 (16.11.2026.) – šema 2, kopija pre nadogradnje, povratak na fazu A
 
@@ -374,3 +374,18 @@ Rezultati (G, run 43919606616): svi koraci prošli.
 - NOT TESTED (isključen rad bez nadogradnje): B-150, B-151, B-180, B-181/B-186.
 - NOT TESTED (zavise od dnevnika, B2): B-153, B-154. B-183 stanje 7 nije pokriveno.
 - R: NOT TESTED. M: NOT TESTED – ACCEPTED RISK.
+
+**Odluke vlasnika 16.11.2026. 18:57:** (1) rad bez uspešne nadogradnje: opcija A – ako kopija ili migracija ne uspe, Engine se ne pokreće; read-only režim se ne vraća; (2) varijanta C odobrena; (3) B1 prihvaćen; odobren prelazak na B2.
+
+Posledica odluke (1) za plan V8: B-150, B-151, B-152 (u obliku „P prolazi“), B-153, B-154, B-180, B-181, B-186 i namerni kvarovi B-173, B-175, B-176 gube predmet, jer režim bez nadogradnje ne postoji. U 2.3 važi slučaj 8 iz tabele „Kada Engine odbija pokretanje“. Kod režima ostaje u programu, isključen; ne izbacuje se bez odobrenja.
+
+Sve NOT TESTED stavke posle B1:
+
+| Test / stavka | Stanje | Razlog |
+|---|---|---|
+| B-150, B-151, B-180, B-181/B-186 | NOT TESTED | rad bez nadogradnje isključen (odluka 1); testovi stoje u kodu kao preskočeni, sa razlogom |
+| B-153, B-154 | NOT TESTED | zavise od dnevnika emitovanja (B2) i od rada bez nadogradnje; posle odluke 1 nemaju predmet |
+| B-183, stanje 7 (folder bez prava pravljenja fajlova) | NOT TESTED | nije pokriveno testom |
+| B-102 | samo zabeleženo | zbir 66,3 MB u mirovanju; budžet 240 MB nije potvrđen |
+| R-B1 – R-B10 | NOT TESTED | računar vlasnika |
+| sve na mini PC-u | NOT TESTED – ACCEPTED RISK | – |

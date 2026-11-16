@@ -79,6 +79,12 @@ jobs:
           foreach ($p in 'Engine', 'Watchdog', 'UI') {
             dotnet publish "src/LustreRadio.$p/LustreRadio.$p.csproj" -c Release -r win-x64 --self-contained true -o publish/LustreRadio
             if ($LASTEXITCODE -ne 0) { throw "publish $p" }
+            $rc = Get-Content "publish/LustreRadio/LustreRadio.$p.runtimeconfig.json" -Raw | ConvertFrom-Json
+            if ($rc.runtimeOptions.configProperties.'System.GC.Concurrent' -ne $false) { throw "${p}: concurrent GC nije iskljucen (spec. 3.4)" }
+            $pe = [System.Reflection.PortableExecutable.PEReader]::new([System.IO.File]::OpenRead((Resolve-Path "publish/LustreRadio/LustreRadio.$p.dll")))
+            $r2r = ($pe.PEHeaders.CorHeader.ManagedNativeHeaderDirectory.Size -gt 0); $pe.Dispose()
+            if (-not $r2r) { throw "${p}: nije ReadyToRun (spec. 3.4)" }
+            Write-Host "REZULTAT | spec. 3.4 | LustreRadio.$p | concurrent GC iskljucen, ReadyToRun | PASS"
           }
       - name: Objavljeni paket (bez skrivenih prekidaca; verzija SQLite-a u samom fajlu)
         shell: pwsh
@@ -173,16 +179,3 @@ jobs:
         with:
           name: G-sim
           path: sim-rezultati
-
-  merenje-gc-r2r:
-    # Provera odstupanja od specifikacije 3.4 (G). Samo merenje; podesavanja programa se ne menjaju.
-    runs-on: windows-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-dotnet@v4
-        with:
-          dotnet-version: '10.0.x'
-      - name: GC i ReadyToRun, tri varijante
-        shell: pwsh
-        run: ./tests/integration/gc-r2r.ps1
