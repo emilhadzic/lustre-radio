@@ -526,7 +526,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
 
     private void StartSession(RadioDirector director)
     {
-        var session = new RadioSession(director, _format, director.LoadSnapshot());
+        var session = new RadioSession(director, _format, director.LoadSnapshot(), realtime: true, log: _log);
         var ring = new FloatRingBuffer(65536);
         var pauseGate = new PauseGate(session.Output);
         var volume = new VolumeControl(pauseGate, _volume);

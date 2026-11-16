@@ -163,7 +163,7 @@ internal static class Child
             // provera da je ogranicenje stvarno primenjeno: ista racunska petlja pre i posle
             result.MeasuredSpeedRatio = Math.Round(Calibrate() / (double)before, 3);
 
-            var session = new RadioSession(director, format);
+            var session = new RadioSession(director, format, realtime: true);
             var ring = new FloatRingBuffer(65536);
             var volume = new VolumeControl(new PauseGate(session.Output), 1.0);
             using var pump = new RenderPump(volume, new Limiter(format), ring);

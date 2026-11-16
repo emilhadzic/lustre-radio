@@ -75,8 +75,13 @@ public sealed class RadioSession
 
     private readonly IPlaybackEvents? _history;
 
-    public RadioSession(RadioDirector director, AudioFormat format, PlaybackSnapshot? snapshot = null)
+    private readonly Coordinator _coordinator;
+    private readonly bool _realtime;
+
+    /// <param name="realtime">true: koordinator i radna nit rade na svojim nitima (rad programa); false: priprema unapred, bez niti (testovi).</param>
+    public RadioSession(RadioDirector director, AudioFormat format, PlaybackSnapshot? snapshot = null, bool realtime = false, Action<string>? log = null)
     {
+        _realtime = realtime;
         _history = director.History;
         _director = director ?? throw new ArgumentNullException(nameof(director));
         _format = format;
@@ -87,12 +92,15 @@ public sealed class RadioSession
             _resumeOffsetSeconds = snapshot!.PositionSeconds;
         }
 
+        _coordinator = new Coordinator(format, Next, director.Options.Coordinator, _history, threaded: realtime, log);
+        _coordinator.TrackStarted += track => director.NotifyStarted(track.Info);
         _sequencer = new CrossfadeSequencer(
             format,
-            Next,
+            _coordinator,
             director.Options.CrossfadeSeconds,
             initialFadeInSeconds: _resume is not null ? director.Options.ResumeFadeInSeconds : 0,
             history: _history);
+        _coordinator.Start();
         _fader = new ClosingFader(_sequencer, director.ShouldPlayNow, director.Schedule.FadeOutSeconds);
     }
 
@@ -114,6 +122,7 @@ public sealed class RadioSession
     public void End(StopReason reason = StopReason.Closing)
     {
         _sequencer.ReportStop(reason);
+        _coordinator.Dispose();
         if (_resume is { } resume)
         {
             _resume = null;

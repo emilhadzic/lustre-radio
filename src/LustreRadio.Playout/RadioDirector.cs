@@ -25,6 +25,9 @@ public sealed record DirectorOptions
     public RotationSettings Rotation { get; init; } = new();
 
     public int MaxOpenAttempts { get; init; } = 5;
+
+    /// <summary>Priprema zvuka: bafer decka, N2 (plan faze B, 2.1 i 2.7).</summary>
+    public CoordinatorOptions Coordinator { get; init; } = new();
 }
 
 /// <summary>Sta je sviralo i dokle je stiglo; upisuje se na svakih nekoliko sekundi.</summary>
@@ -91,8 +94,17 @@ public sealed class RadioDirector
     /// <summary>Istorija emitovanja (B2); null u testovima koji je ne proveravaju.</summary>
     public IPlaybackEvents? History { get; }
 
-    /// <summary>Poziva se kad krene nova pesma (sa niti koja priprema zvuk; mora biti brzo).</summary>
+    /// <summary>Poziva se kad nova pesma stvarno krene (sa niti koordinatora, nikad sa audio-niti; mora biti brzo).</summary>
     public event Action<NowPlaying>? TrackStarted;
+
+    /// <summary>Koordinator javlja da je pripremljena pesma krenula.</summary>
+    public void NotifyStarted(object? info)
+    {
+        if (info is NowPlaying playing)
+        {
+            TrackStarted?.Invoke(playing);
+        }
+    }
 
     public WeeklySchedule Schedule
     {
@@ -254,8 +266,8 @@ public sealed class RadioDirector
                 // B2: istorija vise ne ide u bazu odavde; zapis "pripremljena" ide u crnu kutiju, a bazu puni pisar.
                 queued = queued with { PlaybackId = Guid.CreateVersion7() };
                 History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, (byte)((int)pick.Tier + 1), decision.Program.Name);
-                TrackStarted?.Invoke(new NowPlaying(pick.Track.Id, record.Title, record.Artist, decision.Program.Name, decision.Part, Resumed: false, record.DurationSeconds));
-                return queued;
+                // B3: pesma se priprema unapred; "sta svira" se javlja tek kad stvarno krene (NotifyStarted).
+                return queued with { Info = new NowPlaying(pick.Track.Id, record.Title, record.Artist, decision.Program.Name, decision.Part, Resumed: false, record.DurationSeconds) };
             }
 
             _log("Vise pesama zaredom nije moglo da se otvori.");
@@ -301,7 +313,7 @@ public sealed class RadioDirector
             {
                 queued = queued with { PlaybackId = Guid.CreateVersion7() };
                 History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, 0, decision.Program?.Name);
-                TrackStarted?.Invoke(new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds));
+                queued = queued with { Info = new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds) };
             }
 
             return queued;

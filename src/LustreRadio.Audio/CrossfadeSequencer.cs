@@ -8,6 +8,9 @@ public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1
 {
     /// <summary>Jedno emitovanje (plan faze B, 2.2): nov za svaki izbor, nikad se ne koristi ponovo.</summary>
     public Guid PlaybackId { get; init; }
+
+    /// <summary>Podaci za prikaz (sta svira); prenosi ih koordinator kad pesma stvarno krene.</summary>
+    public object? Info { get; init; }
 }
 
 /// <summary>Zapis o tome sta je i kada pusteno (pozicija u izlaznom toku, u frejmovima).</summary>
@@ -32,36 +35,55 @@ public sealed class TrackEvent
 }
 
 /// <summary>
-/// Standard Crossfade: dva decka, fiksna duzina prelaza, equal-power kriva.
-/// Ako se pesma zavrsi pre vremena ili izvor pukne, odmah krece sledeca.
+/// Nit za mesanje (Standard Crossfade): dva decka, fiksna duzina prelaza, equal-power kriva.
+/// <para>Faza B, korak B3: cita SAMO gotov zvuk iz bafera deckova; sledecu pesmu uzima iz mesta za predaju
+/// (<see cref="HandoffSlot"/>). Ne poziva dekoder, ne otvara fajlove, ne pise u bazu i ne ceka: kad zvuka nema,
+/// salje tisinu. Pravilo "nema povratka" (plan 2.1): od pocetka pretapanja tekuca pesma je B; ako A ostane bez zvuka,
+/// pretapanje se zavrsava odmah, A se pusta i vise se ne cuje.</para>
 /// </summary>
 public sealed class CrossfadeSequencer : IFrameProvider
 {
     private const int MaxChunkFrames = 4096;
-    private const int MaxLoadAttempts = 5;
 
-    private readonly Func<QueuedTrack?> _nextTrack;
+    private readonly Coordinator _coordinator;
+    private readonly bool _ownsCoordinator;
+    private readonly HandoffSlot _handoff;
     private readonly long _crossfadeFrames;
     private readonly long _recoveryFadeFrames;
+    private readonly long _shortestTransition;
     private readonly float[] _scratch = new float[MaxChunkFrames * 2];
     private readonly List<TrackEvent> _events = [];
+    private readonly IPlaybackEvents? _history;
+    private readonly long _skipFadeFrames;
 
     private Deck _current = new();
     private Deck _incoming = new();
     private TrackEvent? _currentEvent;
     private TrackEvent? _incomingEvent;
     private bool _transition;
-    private bool _queueEmpty;
-    private readonly long _skipFadeFrames;
+    private long _transitionElapsed;
+    private bool _incomingStarved;
     private long _pendingFadeIn;
     private long _outFrames;
     private volatile bool _skipRequested;
+    private long _starvedFrames;
+    private long _lateTransitions;
+    private long _takeovers;
 
-    private readonly IPlaybackEvents? _history;
-
+    /// <summary>Priprema unapred, bez posebnih niti (testovi, offline priprema zvuka).</summary>
     public CrossfadeSequencer(AudioFormat format, Func<QueuedTrack?> nextTrack, double crossfadeSeconds, double initialFadeInSeconds = 0, IPlaybackEvents? history = null)
+        : this(format, new Coordinator(format, nextTrack ?? throw new ArgumentNullException(nameof(nextTrack)), null, history), crossfadeSeconds, initialFadeInSeconds, history, ownsCoordinator: true)
     {
-        _history = history;
+    }
+
+    /// <summary>Sa zadatim koordinatorom (u radu programa koordinator i radna nit rade na svojim nitima).</summary>
+    public CrossfadeSequencer(AudioFormat format, Coordinator coordinator, double crossfadeSeconds, double initialFadeInSeconds = 0, IPlaybackEvents? history = null)
+        : this(format, coordinator, crossfadeSeconds, initialFadeInSeconds, history, ownsCoordinator: false)
+    {
+    }
+
+    private CrossfadeSequencer(AudioFormat format, Coordinator coordinator, double crossfadeSeconds, double initialFadeInSeconds, IPlaybackEvents? history, bool ownsCoordinator)
+    {
         if (format.Channels != 2)
         {
             throw new ArgumentException("Engine radi samo u stereo formatu.", nameof(format));
@@ -69,19 +91,40 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
         ArgumentOutOfRangeException.ThrowIfNegative(crossfadeSeconds);
         Format = format;
-        _nextTrack = nextTrack ?? throw new ArgumentNullException(nameof(nextTrack));
+        _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
+        _ownsCoordinator = ownsCoordinator;
+        _handoff = coordinator.Handoff;
+        _history = history;
         _crossfadeFrames = format.FramesFromSeconds(crossfadeSeconds);
         _recoveryFadeFrames = format.FramesFromSeconds(0.05);
+        _shortestTransition = format.FramesFromSeconds(0.5);
         _skipFadeFrames = format.FramesFromSeconds(Math.Min(2.0, Math.Max(0.05, crossfadeSeconds)));
         _pendingFadeIn = format.FramesFromSeconds(Math.Max(0, initialFadeInSeconds));
+        var resume = format.FramesFromSeconds(coordinator.Options.ResumeSeconds);
+        foreach (var deck in new[] { _current, _incoming })
+        {
+            deck.ResumeFrames = resume;
+            deck.RampFrames = _recoveryFadeFrames;
+        }
     }
 
     public AudioFormat Format { get; }
+
+    public Coordinator Coordinator => _coordinator;
 
     public IReadOnlyList<TrackEvent> Events => _events;
 
     /// <summary>Ukupan broj do sada proizvedenih frejmova.</summary>
     public long OutputFrames => Interlocked.Read(ref _outFrames);
+
+    /// <summary>Frejmovi tisine zbog praznog bafera decka ili nespremne pesme (izmereno).</summary>
+    public long StarvedFrames => Interlocked.Read(ref _starvedFrames);
+
+    /// <summary>Prelazi kod kojih sledeca pesma nije bila spremna na vreme.</summary>
+    public long LateTransitions => Interlocked.Read(ref _lateTransitions);
+
+    /// <summary>Preuzimanja po pravilu "nema povratka" (A ostala bez zvuka tokom pretapanja).</summary>
+    public long Takeovers => Interlocked.Read(ref _takeovers);
 
     /// <summary>Prelazak na sledecu pesmu odmah, kratkim prelazom (dugme "Next"). Sme sa druge niti.</summary>
     public void RequestSkip() => _skipRequested = true;
@@ -110,6 +153,11 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
     public int Read(Span<float> buffer)
     {
+        if (!_coordinator.Threaded)
+        {
+            _coordinator.ServiceInline(_outFrames);
+        }
+
         var total = buffer.Length / 2;
         var done = 0;
 
@@ -117,50 +165,34 @@ public sealed class CrossfadeSequencer : IFrameProvider
         {
             if (!_current.IsLoaded)
             {
-                if (!TryLoad(_current, _pendingFadeIn, 0, out _currentEvent))
+                if (!TryStart(_current, _pendingFadeIn, 0, out _currentEvent))
                 {
+                    if (_coordinator.Exhausted)
+                    {
+                        break; // nema vise nicega: kraj toka
+                    }
+
+                    // sledeca jos nije spremna: tisina, bez cekanja; posle tisine pesma ulazi za 50 ms ("zakasneli prelaz")
+                    if (_outFrames > 0 && _pendingFadeIn < _recoveryFadeFrames)
+                    {
+                        _pendingFadeIn = _recoveryFadeFrames;
+                        Interlocked.Increment(ref _lateTransitions);
+                    }
+
+                    buffer[(done * 2)..].Clear();
+                    Interlocked.Add(ref _starvedFrames, total - done);
+                    Interlocked.Add(ref _outFrames, total - done);
+                    done = total;
                     break;
                 }
 
-                if (_currentEvent is { } started)
-                {
-                    _history?.Started(started.PlaybackId, started.TrackNumber, _outFrames);
-                }
-
+                _history?.Started(_currentEvent!.PlaybackId, _currentEvent.TrackNumber, _outFrames);
                 _pendingFadeIn = 0;
-                _queueEmpty = false;
             }
 
             var chunk = Math.Min(total - done, MaxChunkFrames);
-
-            if (_skipRequested)
-            {
-                _skipRequested = false;
-                if (!_transition)
-                {
-                    var left = _current.RemainingFrames ?? _skipFadeFrames;
-                    BeginTransition(Math.Max(1, Math.Min(_skipFadeFrames, left)));
-                    if (_transition && _currentEvent is { } skipped)
-                    {
-                        skipped.Skipped = true;
-                    }
-
-                    _queueEmpty = false; // ako sledece nema, obican tok se nastavlja
-                }
-            }
-
-            if (!_transition && !_queueEmpty && _crossfadeFrames > 0 && _current.RemainingFrames is long remaining)
-            {
-                var untilTransition = remaining - _crossfadeFrames;
-                if (untilTransition <= 0)
-                {
-                    BeginTransition(Math.Max(1, Math.Min(_crossfadeFrames, remaining)));
-                }
-                else
-                {
-                    chunk = (int)Math.Min(chunk, untilTransition);
-                }
-            }
+            HandleSkip();
+            chunk = PlanTransition(chunk);
 
             var slice = buffer.Slice(done * 2, chunk * 2);
             slice.Clear();
@@ -170,8 +202,21 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
             if (_transition)
             {
+                var wasStarved = _incomingStarved;
                 _incoming.ReadAdd(slice, _scratch);
+                _incomingStarved = _incoming.Starved;
+                if (wasStarved && !_incomingStarved)
+                {
+                    // B se ukljucuje na glasnoci koja odgovara ovom trenutku pretapanja (ulaz od 50 ms vodi deck)
+                    _incoming.SyncFadeIn(_transitionElapsed);
+                }
+
                 advance = chunk;
+                _transitionElapsed += chunk;
+                if (_incoming.Starved || _current.Starved)
+                {
+                    Interlocked.Add(ref _starvedFrames, chunk - Math.Min(chunk, fromCurrent));
+                }
 
                 if (_incoming.Finished && !_current.Finished)
                 {
@@ -182,6 +227,10 @@ public sealed class CrossfadeSequencer : IFrameProvider
                 {
                     CompleteTransition();
                 }
+                else if (_current.Starved && _transition)
+                {
+                    TakeOver(advance);
+                }
             }
             else if (_current.Finished)
             {
@@ -190,6 +239,12 @@ public sealed class CrossfadeSequencer : IFrameProvider
                 var abnormal = _current.Faulted || _current.EndedEarly;
                 CloseCurrent();
                 _pendingFadeIn = abnormal ? _recoveryFadeFrames : 0;
+            }
+            else if (_current.Starved)
+            {
+                // prazan bafer: tisina do kraja dela, bez cekanja; ista pesma nastavlja kad se skupi N2
+                advance = chunk;
+                Interlocked.Add(ref _starvedFrames, chunk - fromCurrent);
             }
             else
             {
@@ -203,51 +258,9 @@ public sealed class CrossfadeSequencer : IFrameProvider
         return done;
     }
 
-    private void BeginTransition(long fadeFrames)
-    {
-        if (!TryLoad(_incoming, fadeFrames, 0, out _incomingEvent))
-        {
-            _queueEmpty = true; // nema sledece: trenutna pesma svira do svog kraja, bez stisavanja
-            return;
-        }
-
-        _current.StartFadeOut(fadeFrames);
-        _transition = true;
-        if (_incomingEvent is { } b)
-        {
-            if (_currentEvent is { } a)
-            {
-                _history?.Crossfade(b.PlaybackId, b.TrackNumber, a.PlaybackId, a.TrackNumber, _outFrames);
-            }
-            else
-            {
-                _history?.Started(b.PlaybackId, b.TrackNumber, _outFrames);
-            }
-        }
-    }
-
-    /// <summary>Nova pesma je pukla usred prelaza: ubaci sledecu na isto mesto u krivoj.</summary>
-    private void ReplaceIncoming()
-    {
-        Flag(_incomingEvent, _incoming);
-        Finish(_incomingEvent, _incoming);
-        var fadeLength = _current.FadeLength;
-        var fadePosition = _current.FadePosition;
-        _incoming.Unload();
-        if (!TryLoad(_incoming, fadeLength, fadePosition, out _incomingEvent))
-        {
-            _transition = false;
-            _queueEmpty = true;
-        }
-        else if (_incomingEvent is { } replacement)
-        {
-            _history?.Started(replacement.PlaybackId, replacement.TrackNumber, _outFrames);
-        }
-    }
-
     /// <summary>
-    /// Posle zaustavljanja zvuka (gasenje, zatvaranje): pesme koje su jos u deckovima dobijaju PREKINUTO sa razlogom.
-    /// Poziva se kad audio-nit vise ne radi.
+    /// Posle zaustavljanja zvuka (gasenje, zatvaranje): pesme koje su jos u deckovima dobijaju PREKINUTO sa razlogom,
+    /// a pripremljene koje nisu krenule se odbacuju. Poziva se kad audio-nit vise ne radi.
     /// </summary>
     public void ReportStop(StopReason reason)
     {
@@ -261,15 +274,157 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
         _currentEvent = null;
         _incomingEvent = null;
+        _coordinator.DiscardPending(StopReason.Shutdown);
+        if (_ownsCoordinator)
+        {
+            _coordinator.Dispose();
+        }
+    }
+
+    private void HandleSkip()
+    {
+        if (!_skipRequested)
+        {
+            return;
+        }
+
+        if (_transition)
+        {
+            // Sledeca tokom repa: rep pesme A se brzo stisa (PREKINUTO – Sledeca), zatim prelaz sa B na sledecu
+            if (_currentEvent is { } tail)
+            {
+                tail.Skipped = true;
+            }
+
+            if (!_current.FadingOut || _current.FadeLength - _current.FadePosition > _recoveryFadeFrames)
+            {
+                _current.StartFadeOut(_recoveryFadeFrames);
+            }
+
+            return;
+        }
+
+        if (_handoff.Peek() is null)
+        {
+            return; // sledeca jos nije spremna: zahtev ceka
+        }
+
+        _skipRequested = false;
+        var left = _current.RemainingFrames ?? _skipFadeFrames;
+        BeginTransition(Math.Max(1, Math.Min(_skipFadeFrames, left)));
+        if (_transition && _currentEvent is { } skipped)
+        {
+            skipped.Skipped = true;
+        }
+    }
+
+    private int PlanTransition(int chunk)
+    {
+        if (_transition || _crossfadeFrames <= 0 || _current.Starved || _current.RemainingFrames is not long remaining)
+        {
+            return chunk;
+        }
+
+        var untilTransition = remaining - _crossfadeFrames;
+        if (untilTransition > 0)
+        {
+            return (int)Math.Min(chunk, untilTransition);
+        }
+
+        if (_handoff.Peek() is null)
+        {
+            // Sledeca nije spremna kad pretapanje treba da pocne: proverava se cesce; posle 0,5 s pre kraja se ne pretapa.
+            return remaining >= _shortestTransition ? (int)Math.Min(chunk, 1024) : chunk;
+        }
+
+        if (untilTransition < 0 && remaining < _shortestTransition)
+        {
+            return chunk; // prekasno za pretapanje: A se zavrsi, B krece sa ulazom od 50 ms
+        }
+
+        if (untilTransition < 0)
+        {
+            Interlocked.Increment(ref _lateTransitions);
+        }
+
+        BeginTransition(Math.Max(1, Math.Min(_crossfadeFrames, remaining)));
+        return chunk;
+    }
+
+    /// <summary>"Nema povratka", slucajevi 1 i 3: A ostala bez zvuka -> pretapanje zavrseno odmah; A se pusta i vise se ne cuje.</summary>
+    private void TakeOver(int advance)
+    {
+        Interlocked.Increment(ref _takeovers);
+        if (_currentEvent is { } a)
+        {
+            _history?.Stopped(a.PlaybackId, a.TrackNumber, StopReason.DecoderStall, _outFrames + advance, PositionMs(a));
+        }
+
+        _currentEvent = null;
+        _incoming.RampToFull(_recoveryFadeFrames);
+        CompleteTransition();
+    }
+
+    private void BeginTransition(long fadeFrames)
+    {
+        if (!TryStart(_incoming, fadeFrames, 0, out _incomingEvent))
+        {
+            return; // nema sledece: trenutna pesma svira dalje
+        }
+
+        _current.StartFadeOut(fadeFrames);
+        _transition = true;
+        _transitionElapsed = 0;
+        _incomingStarved = false;
+        if (_incomingEvent is { } b)
+        {
+            if (_currentEvent is { } a)
+            {
+                _history?.Crossfade(b.PlaybackId, b.TrackNumber, a.PlaybackId, a.TrackNumber, _outFrames);
+            }
+            else
+            {
+                _history?.Started(b.PlaybackId, b.TrackNumber, _outFrames);
+            }
+        }
+    }
+
+    /// <summary>Nova pesma se zavrsila (greska, prerani kraj) usred prelaza: ubaci sledecu na isto mesto u krivoj.</summary>
+    private void ReplaceIncoming()
+    {
+        Flag(_incomingEvent, _incoming);
+        Finish(_incomingEvent, _incoming);
+        var fadeLength = _current.FadeLength;
+        var fadePosition = _current.FadePosition;
+        _incoming.Unload();
+        _incomingStarved = false;
+        if (!TryStart(_incoming, fadeLength, fadePosition, out _incomingEvent))
+        {
+            _transition = false;
+        }
+        else if (_incomingEvent is { } replacement)
+        {
+            _history?.Started(replacement.PlaybackId, replacement.TrackNumber, _outFrames);
+        }
     }
 
     private void CompleteTransition()
     {
-        CloseCurrent();
+        if (_current.Finished)
+        {
+            CloseCurrent();
+        }
+        else
+        {
+            _current.Unload(); // A je pustena (preuzimanje); njen bafer ide nazad koordinatoru
+            _currentEvent = null;
+        }
+
         (_current, _incoming) = (_incoming, _current);
         _currentEvent = _incomingEvent;
         _incomingEvent = null;
         _transition = false;
+        _incomingStarved = false;
     }
 
     private void CloseCurrent()
@@ -288,7 +443,9 @@ public sealed class CrossfadeSequencer : IFrameProvider
             return;
         }
 
+        var feedReason = deck.Buffered?.Feed.EndReason ?? StopReason.None;
         var reason = trackEvent.Skipped ? StopReason.Skip
+            : feedReason != StopReason.None ? feedReason
             : deck.Faulted ? StopReason.FileError
             : deck.EndedEarly ? StopReason.UnexpectedEnd
             : StopReason.None;
@@ -302,7 +459,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
         }
     }
 
-    private int PositionMs(TrackEvent e) => (int)Math.Min(int.MaxValue, (_outFrames - e.StartFrame) * 1000 / Format.SampleRate);
+    private int PositionMs(TrackEvent? e) => e is null ? 0 : (int)Math.Min(int.MaxValue, (_outFrames - e.StartFrame) * 1000 / Format.SampleRate);
 
     private static void Flag(TrackEvent? trackEvent, Deck deck)
     {
@@ -315,59 +472,31 @@ public sealed class CrossfadeSequencer : IFrameProvider
         trackEvent.EndedEarly |= deck.EndedEarly;
     }
 
-    private bool TryLoad(Deck deck, long fadeInFrames, long fadeStart, out TrackEvent? trackEvent)
+    /// <summary>Uzima pripremljenu pesmu iz mesta za predaju (bez cekanja). False ako nijedna nije spremna.</summary>
+    private bool TryStart(Deck deck, long fadeInFrames, long fadeStart, out TrackEvent? trackEvent)
     {
-        for (var attempt = 0; attempt < MaxLoadAttempts; attempt++)
+        var item = _handoff.Take();
+        if (item is null)
         {
-            var track = _nextTrack();
-            if (track is null)
-            {
-                break;
-            }
-
-            trackEvent = new TrackEvent
-            {
-                Id = track.Id,
-                StartFrame = _outFrames,
-                PlaybackId = track.PlaybackId,
-                TrackNumber = long.TryParse(track.Id, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : 0,
-            };
-            AudioThreadGuard.Touch(AudioViolation.Lock);
-            lock (_events)
-            {
-                _events.Add(trackEvent);
-            }
-
-            try
-            {
-                if (track.Source.Format != Format)
-                {
-                    throw new InvalidOperationException("Format izvora se razlikuje od formata engine-a.");
-                }
-
-                deck.Load(track.Source, track.Gain);
-            }
-            catch (Exception)
-            {
-                trackEvent.FailedToLoad = true;
-                _history?.Discarded(trackEvent.PlaybackId, trackEvent.TrackNumber, StopReason.NotLoaded);
-                try
-                {
-                    track.Source.Dispose();
-                }
-                catch (Exception)
-                {
-                    // neispravan izvor
-                }
-
-                continue;
-            }
-
-            deck.StartFadeIn(fadeInFrames, fadeStart);
-            return true;
+            trackEvent = null;
+            return false;
         }
 
-        trackEvent = null;
-        return false;
+        trackEvent = new TrackEvent
+        {
+            Id = item.Track.Id,
+            StartFrame = _outFrames,
+            PlaybackId = item.Track.PlaybackId,
+            TrackNumber = item.TrackNumber,
+        };
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_events)
+        {
+            _events.Add(trackEvent);
+        }
+
+        deck.Load(item.Source, item.Track.Gain);
+        deck.StartFadeIn(fadeInFrames, fadeStart);
+        return true;
     }
 }
