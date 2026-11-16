@@ -118,6 +118,9 @@ internal sealed class SimResult
     public int Gc1 { get; set; }
     public int Gc2 { get; set; }
     public double CpuSeconds { get; set; }
+
+    /// <summary>Izmerena brzina jedne niti posle ogranicenja, u odnosu na brzinu pre ogranicenja (1,0 = bez promene).</summary>
+    public double MeasuredSpeedRatio { get; set; }
     public string? Error { get; set; }
 }
 
@@ -150,11 +153,15 @@ internal static class Child
                 throw new InvalidOperationException("U simulaciji nema pesama koje smeju da se puste.");
             }
 
+            var before = Calibrate();
             Console.WriteLine("READY");
             if (Console.ReadLine() != "GO")
             {
                 throw new InvalidOperationException("Nije stigao znak za pocetak.");
             }
+
+            // provera da je ogranicenje stvarno primenjeno: ista racunska petlja pre i posle
+            result.MeasuredSpeedRatio = Math.Round(Calibrate() / (double)before, 3);
 
             var session = new RadioSession(director, format);
             var ring = new FloatRingBuffer(65536);
@@ -216,6 +223,25 @@ internal static class Child
         }
 
         return result.Error is null ? 0 : 1;
+    }
+
+    /// <summary>Koliko krugova jednostavne racunske petlje jedna nit uradi za 2 s (stvarnog vremena).</summary>
+    private static long Calibrate()
+    {
+        var clock = Stopwatch.StartNew();
+        long rounds = 0;
+        var x = 1.0;
+        while (clock.ElapsedMilliseconds < 2000)
+        {
+            for (var i = 0; i < 10_000; i++)
+            {
+                x = Math.Sqrt(x + i);
+            }
+
+            rounds++;
+        }
+
+        return x > 0 ? rounds : rounds + 1;
     }
 
     private static string CpuModel()
@@ -377,7 +403,7 @@ internal static class Launcher
                 CultureInfo.InvariantCulture,
                 $"G-SIM | {r.Scenario} | pesama {r.TracksStarted} | prazan izlaz {r.DeviceUnderrunEvents} ({r.DeviceUnderrunFrames / 48.0:F0} ms) | najduzi korak {r.RenderMaxStepMs} ms (>20 ms: {r.RenderStepsOver20ms}, >50 ms: {r.RenderStepsOver50ms}) | " +
                 $"najmanja zaliha {r.RingMinFillSeconds:F3} s | memorija na audio-niti {r.RenderAllocatedBytes} B | cuvar: fajl {r.GuardFileAccess}, dekoder {r.GuardDecode}, baza {r.GuardDatabase}, dnevnik {r.GuardLog}, brava {r.GuardLock} | " +
-                $"privatna memorija vrh {r.PrivateMemoryPeakMb} MB | procesor {r.CpuSeconds} s | {r.CpuModel} | {(r.Error is null ? "zavrseno" : "GRESKA: " + r.Error)}"));
+                $"privatna memorija vrh {r.PrivateMemoryPeakMb} MB | procesor {r.CpuSeconds} s | izmerena brzina {r.MeasuredSpeedRatio:F2}x | {r.CpuModel} | {(r.Error is null ? "zavrseno" : "GRESKA: " + r.Error)}"));
         }
 
         return results.All(r => r.Error is null) ? 0 : 1;
