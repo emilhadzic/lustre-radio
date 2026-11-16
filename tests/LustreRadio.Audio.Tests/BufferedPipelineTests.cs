@@ -434,7 +434,7 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
         var first = paused.Render(8);
         // pauza: niko ne cita sekvencer (pauza traje koliko god; ovde nije vazno koliko)
         var rest = paused.Render(22);
-        Assert.Equal(expected, [.. first, .. rest]);
+        Assert.Equal(expected, first.Concat(rest).ToArray());
     }
 
     [Fact] // B-70: dekoder daje tacno 2,2x brzinu slusanja, 30 pretapanja
