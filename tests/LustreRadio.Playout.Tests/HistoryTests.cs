@@ -63,7 +63,29 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
 
     private PlayRow Row(Guid pid) => Rows().Single(r => r.PlaybackId == pid.ToString());
 
-    private List<JournalRecord> JournalRecords() => new PlayJournal(Path.Combine(_root, PlaybackHistory.JournalFolder)).ReadAll().Records.ToList();
+    /// <summary>Svi zapisi dnevnika: arhivirani (po redu) pa tekuci fajl.</summary>
+    private List<JournalRecord> JournalRecords()
+    {
+        var folder = Path.Combine(_root, PlaybackHistory.JournalFolder);
+        var result = new List<JournalRecord>();
+        var archive = Path.Combine(folder, PlayJournal.ArchiveFolder);
+        if (Directory.Exists(archive))
+        {
+            foreach (var file in Directory.EnumerateFiles(archive, "*.jsonl").Order())
+            {
+                foreach (var line in File.ReadAllLines(file))
+                {
+                    if (PlayJournal.TryParse(System.Text.Encoding.UTF8.GetBytes(line), out var record))
+                    {
+                        result.Add(record);
+                    }
+                }
+            }
+        }
+
+        result.AddRange(new PlayJournal(folder).ReadAll().Records);
+        return result;
+    }
 
     private static void WaitUntil(Func<bool> condition, TimeSpan timeout, string what)
     {

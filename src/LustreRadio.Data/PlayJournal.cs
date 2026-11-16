@@ -93,7 +93,8 @@ public sealed class PlayJournal : IDisposable
 
         try
         {
-            _stream ??= new FileStream(Path, FileMode.Append, FileAccess.Write, FileShare.Read);
+            // Deljenje: citanje dnevnika (provera, oporavak) ne sme da obori upis, niti obrnuto.
+            _stream ??= new FileStream(Path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
             _stream.Write(_buffer.WrittenSpan);
             _stream.Flush(flushToDisk: true);
         }
@@ -121,7 +122,13 @@ public sealed class PlayJournal : IDisposable
             return new JournalReadResult([], 0, false);
         }
 
-        var bytes = File.ReadAllBytes(Path);
+        byte[] bytes;
+        using (var input = new FileStream(Path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            bytes = new byte[input.Length];
+            input.ReadExactly(bytes);
+        }
+
         var records = new List<JournalRecord>();
         var invalid = 0;
         var position = 0;
@@ -161,7 +168,7 @@ public sealed class PlayJournal : IDisposable
 
         if (torn)
         {
-            using var stream = new FileStream(Path, FileMode.Open, FileAccess.Write, FileShare.Read);
+            using var stream = new FileStream(Path, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete);
             stream.SetLength(lastGoodEnd);
             stream.Flush(flushToDisk: true);
         }
