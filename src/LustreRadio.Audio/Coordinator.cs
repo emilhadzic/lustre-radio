@@ -324,7 +324,7 @@ public sealed class Coordinator : IDisposable
                 progress = true;
             }
 
-            if (slot.State == State.Preparing && (slot.SourceEnded || slot.Feed.FreeFrames == 0) && Handoff.Publish(slot.Item!))
+            if (slot.State == State.Preparing && slot.Item is not null && (slot.SourceEnded || slot.Feed.FreeFrames < Options.ChunkFrames) && Handoff.Publish(slot.Item))
             {
                 slot.State = State.Published;
                 progress = true;
@@ -372,7 +372,7 @@ public sealed class Coordinator : IDisposable
         Slot? preparing = null;
         foreach (var s in _slots)
         {
-            if (s.State == State.Preparing && !s.SourceEnded && s.Source is not null && s.Feed.FreeFrames > 0)
+            if (s.State == State.Preparing && !s.SourceEnded && s.Source is not null && s.Feed.FreeFrames >= Options.ChunkFrames)
             {
                 preparing = s;
                 break;
@@ -477,8 +477,14 @@ public sealed class Coordinator : IDisposable
 
         if (result.Frames > 0)
         {
-            slot.Feed.Write(result.Buffer.AsSpan(0, result.Frames * 2));
-            slot.Decoded += result.Frames;
+            // posao se zadaje samo kad ima mesta za ceo deo; deo koji ne stane bio bi izgubljen zvuk
+            var written = slot.Feed.Write(result.Buffer.AsSpan(0, result.Frames * 2));
+            if (written < result.Frames)
+            {
+                _log($"GRESKA: deo zvuka nije stao u bafer decka ({result.Frames - written} frejmova).");
+            }
+
+            slot.Decoded += written;
         }
 
         if (result.Ended || result.Error is not null)
