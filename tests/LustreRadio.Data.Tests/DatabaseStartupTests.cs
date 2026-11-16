@@ -144,7 +144,7 @@ public sealed class DatabaseStartupTests : IDisposable
     {
         File.Copy(Fixture, _path);
         using var stop = new CancellationTokenSource();
-        var writer = Task.Run(() =>
+        var writer = new Thread(() =>
         {
             using var w = Raw(_path, readOnly: false);
             var i = 0;
@@ -160,6 +160,7 @@ public sealed class DatabaseStartupTests : IDisposable
                 }
             }
         });
+        writer.Start();
 
         Thread.Sleep(200);
         DatabaseStartupResult result;
@@ -170,7 +171,7 @@ public sealed class DatabaseStartupTests : IDisposable
         finally
         {
             stop.Cancel();
-            writer.Wait();
+            writer.Join();
         }
 
         result.Database.Dispose();

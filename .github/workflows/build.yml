@@ -108,6 +108,22 @@ jobs:
         shell: pwsh
         timeout-minutes: 14
         run: ./tests/integration/nadzor.ps1 -Bin (Resolve-Path publish/LustreRadio)
+      - name: Baza - nadogradnja, rad bez nadogradnje, povratak na fazu A (B1; G)
+        shell: pwsh
+        timeout-minutes: 12
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Copy-Item packaging/proba/* publish/LustreRadio/
+          $dl = Join-Path $env:RUNNER_TEMP 'faza-a-izdanje'
+          gh release download faza-a-0.1.0 --repo $env:GITHUB_REPOSITORY --dir $dl --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'izdanje faze A ne moze da se skine' }
+          $zip = Join-Path $dl 'LustreRadio-faza-a-0.1.0.zip'
+          if ((Get-FileHash $zip -Algorithm SHA256).Hash -ne 'B3720562D8D462FBE759B28485D39673E7D650FBAFCC71144BF51173FD53E2B9') { throw 'kontrolni zbir izdanja faze A se ne slaze' }
+          $phaseA = Join-Path $env:RUNNER_TEMP 'faza-a'
+          Expand-Archive $zip -DestinationPath $phaseA -Force
+          ./tests/integration/baza.ps1 -Bin (Resolve-Path publish/LustreRadio) -PhaseA $phaseA -Fixture (Resolve-Path testdata/db/sema1-sqlite-3.46.1.db)
       - name: Memorija objavljenih programa (B-101, B-102, B-103; G, bez zvuka)
         shell: pwsh
         timeout-minutes: 9
