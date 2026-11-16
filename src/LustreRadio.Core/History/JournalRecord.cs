@@ -84,9 +84,9 @@ public struct JournalRecord
     public string? Program;
 
     /// <summary><c>journal_record_id</c>: oznaka pokretanja + redni broj.</summary>
-    public readonly string Rid => Rid(Run, Seq);
+    public readonly string Rid => MakeRid(Run, Seq);
 
-    public static string Rid(Guid run, long seq) => run.ToString("N") + ":" + seq.ToString(CultureInfo.InvariantCulture);
+    public static string MakeRid(Guid run, long seq) => run.ToString("N") + ":" + seq.ToString(CultureInfo.InvariantCulture);
 
     public readonly bool IsTerminal => Kind is JournalKind.Ended or JournalKind.Stopped or JournalKind.Discarded or JournalKind.Unconfirmed;
 

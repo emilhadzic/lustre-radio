@@ -316,21 +316,21 @@ public sealed unsafe class BlackBox : IDisposable
 
     private Guid ReadGuid(int offset) => new(new ReadOnlySpan<byte>(_base + offset, 16));
 
-    private void WriteGuid(int offset, Guid value) => value.TryWriteBytes(new Span<byte>(_base + offset, 16));
+    private void WriteGuid(int offset, Guid value) => _ = value.TryWriteBytes(new Span<byte>(_base + offset, 16));
 
     private static void Serialize(ref JournalRecord r, Span<byte> b)
     {
         b.Clear();
         BinaryPrimitives.WriteInt64LittleEndian(b, r.Seq);
-        r.Run.TryWriteBytes(b[8..24]);
+        _ = r.Run.TryWriteBytes(b[8..24]);
         b[24] = (byte)r.Kind;
         b[25] = (byte)r.Reason;
         b[26] = (byte)r.Unconfirmed;
         b[27] = r.Source;
         b[28] = r.Part;
         b[29] = r.Tier;
-        r.PlaybackId.TryWriteBytes(b[32..48]);
-        r.PlaybackIdA.TryWriteBytes(b[48..64]);
+        _ = r.PlaybackId.TryWriteBytes(b[32..48]);
+        _ = r.PlaybackIdA.TryWriteBytes(b[48..64]);
         BinaryPrimitives.WriteInt64LittleEndian(b[64..], r.Track);
         BinaryPrimitives.WriteInt64LittleEndian(b[72..], r.TrackA);
         BinaryPrimitives.WriteInt64LittleEndian(b[80..], r.Frame);
@@ -339,7 +339,7 @@ public sealed unsafe class BlackBox : IDisposable
         if (r.Program is { Length: > 0 } program)
         {
             // Kraci naziv ako ne staje (bez zauzimanja memorije; uvek cela slova).
-            Utf8.FromUtf16(program, b.Slice(100, JournalRecord.ProgramBytes), out _, out _, replaceInvalidSequences: true, isFinalBlock: false);
+            _ = Utf8.FromUtf16(program, b.Slice(100, JournalRecord.ProgramBytes), out _, out _, replaceInvalidSequences: true, isFinalBlock: false);
         }
 
         var crc = Crc32.Compute(b[..CrcOffset]);

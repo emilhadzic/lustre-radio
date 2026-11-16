@@ -90,7 +90,7 @@ public sealed class PlayJournalTests : IDisposable
             File.WriteAllBytes(path, full[..(twoLines + cut)]);
             using var journal = new PlayJournal(_folder);
             var read = journal.ReadAll();
-            Assert.Equal([1L, 2L], read.Records.Select(r => r.Seq).ToArray());
+            Assert.Equal(new long[] { 1, 2 }, read.Records.Select(r => r.Seq).ToArray());
             Assert.Equal(cut > 0, read.TornTailTruncated);
             Assert.Equal(0, read.InvalidLines);
             Assert.Equal(twoLines, new FileInfo(path).Length);
@@ -115,7 +115,7 @@ public sealed class PlayJournalTests : IDisposable
 
         using var again = new PlayJournal(_folder);
         var read = again.ReadAll();
-        Assert.Equal([1L, 3L, 4L], read.Records.Select(r => r.Seq).ToArray());
+        Assert.Equal(new long[] { 1, 3, 4 }, read.Records.Select(r => r.Seq).ToArray());
         Assert.Equal(2, read.InvalidLines);
         Assert.False(read.TornTailTruncated);
     }

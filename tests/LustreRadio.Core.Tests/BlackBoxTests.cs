@@ -51,7 +51,8 @@ public sealed class BlackBoxTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(record.PlaybackId, back.PlaybackId);
         Assert.Equal(record.PlaybackIdA, back.PlaybackIdA);
         Assert.Equal((7L, 6L, 123456L, 4321), (back.Track, back.TrackA, back.Frame, back.PositionMs));
-        Assert.Equal(("Četvrtak - popodne", (byte)1, (byte)2, (byte)3), (back.Program, back.Source, back.Part, back.Tier));
+        Assert.Equal("Četvrtak - popodne", back.Program);
+        Assert.Equal(((byte)1, (byte)2, (byte)3), (back.Source, back.Part, back.Tier));
         Assert.False(box.TryRead(2, out _));
     }
 

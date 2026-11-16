@@ -148,9 +148,11 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
 
         Assert.Equal(session.Sequencer.Events.Count, rows.Count);
         Assert.Equal(rows.Count, rows.Select(r => r.PlaybackId).Distinct().Count());
-        Assert.Equal(("prekinuta", "sledeca"), (rows[0].Status, rows[0].StopReason));
+        Assert.Equal("prekinuta", rows[0].Status);
+        Assert.Equal("sledeca", rows[0].StopReason);
         Assert.Contains(rows, r => r.Status == "odsvirana" && r.TransitionReached);
-        Assert.Equal(("prekinuta", "zatvaranje"), (rows[^1].Status, rows[^1].StopReason));
+        Assert.Equal("prekinuta", rows[^1].Status);
+        Assert.Equal("zatvaranje", rows[^1].StopReason);
         Assert.DoesNotContain(rows, r => r.Status.StartsWith("nepotvrdjena", StringComparison.Ordinal));
     }
 
@@ -320,7 +322,8 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
         Assert.Equal(records.Count - 1, records.Select(r => r.Rid).Distinct().Count()); // jedini duplikat je onaj koji je test dodao
         Assert.NotEqual(one, two);
         Assert.Equal(2, Rows().Count(r => r.TrackId == 21));
-        Assert.Equal(("prekinuta", "sledeca"), (Row(twice).Status, Row(twice).StopReason));
+        Assert.Equal("prekinuta", Row(twice).Status);
+        Assert.Equal("sledeca", Row(twice).StopReason);
         Assert.Contains(_log, m => m.Contains("Nepravilnost", StringComparison.Ordinal));
         Assert.Equal(5, Rows().Count); // 2 stara + 3 nova
     }
