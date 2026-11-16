@@ -15,6 +15,9 @@ public sealed class BlackBoxGuard : IDisposable
     private readonly Thread _thread;
     private bool _failing;
 
+    /// <summary>Poslednja greska pri upisu na disk (za dnevnik i test).</summary>
+    public string? LastError { get; private set; }
+
     public BlackBoxGuard(BlackBox box, TimeSpan? interval = null, Action<string>? log = null)
     {
         _box = box ?? throw new ArgumentNullException(nameof(box));
@@ -57,6 +60,7 @@ public sealed class BlackBoxGuard : IDisposable
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or ObjectDisposedException)
             {
+                LastError = ex.Message;
                 if (!_failing)
                 {
                     _failing = true;

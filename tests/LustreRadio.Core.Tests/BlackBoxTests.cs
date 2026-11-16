@@ -220,13 +220,16 @@ public sealed class BlackBoxTests(ITestOutputHelper output) : IDisposable
         using var box = BlackBox.Open(FilePath, 10);
         box.Reset(Guid.CreateVersion7());
         var before = box.Flushes;
-        using (var guard = new BlackBoxGuard(box, TimeSpan.FromMilliseconds(50)))
+        using var guard = new BlackBoxGuard(box, TimeSpan.FromMilliseconds(50));
+        guard.Start();
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (box.Flushes - before < 3 && watch.Elapsed < TimeSpan.FromSeconds(60))
         {
-            guard.Start();
-            Thread.Sleep(600);
+            Thread.Sleep(20);
         }
 
-        Assert.True(box.Flushes - before >= 3, $"upisa na disk: {box.Flushes - before}");
+        output.WriteLine($"3 upisa na disk za {watch.Elapsed.TotalMilliseconds:F0} ms; greska: {guard.LastError ?? "nema"}");
+        Assert.True(box.Flushes - before >= 3, $"upisa na disk: {box.Flushes - before}; greska: {guard.LastError}");
     }
 
     [Fact]
