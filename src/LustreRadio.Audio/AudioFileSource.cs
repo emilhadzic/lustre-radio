@@ -1,3 +1,4 @@
+using LustreRadio.Core.Diagnostics;
 using NAudio.Wave;
 using NAudio.Wave.SampleProviders;
 
@@ -74,6 +75,7 @@ public sealed class AudioFileSource : ISampleSource
 
     public int Read(Span<float> buffer)
     {
+        AudioThreadGuard.Touch(AudioViolation.Decode);
         var want = Math.Min(buffer.Length, _buffer.Length) & ~1;
         if (want == 0)
         {

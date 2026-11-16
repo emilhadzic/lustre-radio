@@ -1,3 +1,6 @@
+using System.Diagnostics;
+using LustreRadio.Core.Diagnostics;
+
 namespace LustreRadio.Audio;
 
 /// <summary>
@@ -66,6 +69,7 @@ public sealed class RenderPump : IDisposable
 
     private void Run()
     {
+        AudioThreadGuard.MarkCurrentThread();
         try
         {
             while (!_stop)
@@ -76,6 +80,9 @@ public sealed class RenderPump : IDisposable
                     continue;
                 }
 
+                // B0: meri se trajanje koraka i memorija zauzeta na ovoj niti; ponasanje se ne menja.
+                var started = Stopwatch.GetTimestamp();
+                var allocatedBefore = GC.GetAllocatedBytesForCurrentThread();
                 var frames = _provider.Read(_block);
                 if (frames == 0)
                 {
@@ -85,6 +92,7 @@ public sealed class RenderPump : IDisposable
                 var span = _block.AsSpan(0, frames * 2);
                 _limiter?.Process(span);
                 _ring.Write(span);
+                AudioMetrics.RecordStep(Stopwatch.GetTimestamp() - started, GC.GetAllocatedBytesForCurrentThread() - allocatedBefore);
                 Interlocked.Add(ref _framesRendered, frames);
             }
 

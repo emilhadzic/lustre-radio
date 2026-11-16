@@ -1,5 +1,6 @@
 using System.Globalization;
 using LustreRadio.Audio;
+using LustreRadio.Core.Diagnostics;
 using LustreRadio.Core.Loudness;
 using LustreRadio.Core.Rotation;
 using LustreRadio.Core.Scheduling;
@@ -72,7 +73,12 @@ public sealed class RadioDirector
         _format = format;
         _rotation = new RotationEngine(random);
         _options = options ?? new DirectorOptions();
-        _log = log ?? (_ => { });
+        var inner = log ?? (_ => { });
+        _log = message =>
+        {
+            AudioThreadGuard.Touch(AudioViolation.Log);
+            inner(message);
+        };
         _schedule = db.Settings.GetJson<WeeklySchedule>(ScheduleKey) ?? DefaultSchedule.Create();
         ReloadCatalog();
         LoadHistory();
@@ -87,6 +93,7 @@ public sealed class RadioDirector
     {
         get
         {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_sync)
             {
                 return _schedule;
@@ -95,6 +102,7 @@ public sealed class RadioDirector
 
         set
         {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_sync)
             {
                 _schedule = value ?? throw new ArgumentNullException(nameof(value));
@@ -107,6 +115,7 @@ public sealed class RadioDirector
     {
         get
         {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_sync)
             {
                 return _override;
@@ -115,6 +124,7 @@ public sealed class RadioDirector
 
         set
         {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_sync)
             {
                 _override = value;
@@ -128,6 +138,7 @@ public sealed class RadioDirector
     {
         get
         {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_sync)
             {
                 return _catalog.Count(t => t.Broadcastable && !t.Blocked);
@@ -140,6 +151,7 @@ public sealed class RadioDirector
     {
         var tracks = _db.Tracks.GetAll();
         var catalog = TrackCatalog.Build(tracks, _db.Licenses.GetAll()).ToList();
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
             _records = tracks.ToDictionary(t => t.Id.ToString(CultureInfo.InvariantCulture));
@@ -151,6 +163,7 @@ public sealed class RadioDirector
     /// <summary>Odluka rasporeda za ovaj trenutak (za prikaz: kada se zatvara, kada se otvara).</summary>
     public ScheduleDecision CurrentDecision()
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
             return ScheduleEngine.Evaluate(_schedule, _override, _clock.NowLocal);
@@ -161,6 +174,7 @@ public sealed class RadioDirector
     {
         get
         {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_sync)
             {
                 return _catalog.Count;
@@ -171,6 +185,7 @@ public sealed class RadioDirector
     /// <summary>Da li radio u ovom trenutku treba da svira. Jeftino: racuna raspored samo kad se nesto menja.</summary>
     public bool ShouldPlayNow()
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
             var now = _clock.NowLocal;
@@ -194,6 +209,7 @@ public sealed class RadioDirector
     /// </summary>
     public QueuedTrack? NextTrack(bool closing = false)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
             var now = _clock.NowLocal;
@@ -259,6 +275,7 @@ public sealed class RadioDirector
             return null;
         }
 
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
             var now = _clock.NowLocal;
@@ -293,6 +310,7 @@ public sealed class RadioDirector
     /// <summary>Pesma je pukla tokom pustanja: belezi se greska; posle tri izlazi iz rotacije.</summary>
     public void ReportFault(string trackId)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
             if (_records.TryGetValue(trackId, out var record))
@@ -323,6 +341,7 @@ public sealed class RadioDirector
         try
         {
             // Brza provera pre pustanja: licenca vazi za tacno onaj fajl koji je skeniran.
+            AudioThreadGuard.Touch(AudioViolation.FileAccess);
             var info = new FileInfo(record.Path);
             if (!info.Exists || info.Length != record.SizeBytes || info.LastWriteTimeUtc != record.LastWriteUtc)
             {

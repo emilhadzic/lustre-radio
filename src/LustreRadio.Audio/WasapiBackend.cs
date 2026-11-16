@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using LustreRadio.Core.Diagnostics;
 using NAudio.CoreAudioApi;
 using NAudio.CoreAudioApi.Interfaces;
 using NAudio.Wave;
@@ -75,6 +76,11 @@ internal sealed class WasapiBackend : IOutputBackend, IMMNotificationClient
 
         public int Read(byte[] buffer, int offset, int count)
         {
+            if (!AudioThreadGuard.IsAudioThread)
+            {
+                AudioThreadGuard.MarkCurrentThread();
+            }
+
             var floats = MemoryMarshal.Cast<byte, float>(buffer.AsSpan(offset, count - (count % 8)));
             var read = puller.Read(floats);
             if (read == 0 && puller.Finished)
@@ -86,6 +92,7 @@ internal sealed class WasapiBackend : IOutputBackend, IMMNotificationClient
             {
                 floats[read..].Clear();
                 reportUnderrunFrames((floats.Length - read) / 2);
+                AudioMetrics.RecordUnderrun((floats.Length - read) / 2);
             }
 
             return floats.Length * sizeof(float);

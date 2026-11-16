@@ -1,7 +1,10 @@
+using System.Diagnostics;
 using System.Globalization;
+using System.Runtime;
 using LustreRadio.Audio;
-using LustreRadio.Core.Security;
+using LustreRadio.Core.Diagnostics;
 using LustreRadio.Core.Scheduling;
+using LustreRadio.Core.Security;
 using LustreRadio.Core.Time;
 using LustreRadio.Data;
 using LustreRadio.Ipc;
@@ -397,8 +400,16 @@ public sealed class EngineHost : IDisposable, IRadioControl
 
     private void Run()
     {
+        LogRuntimeSettings();
+        var nextHealth = TimeSpan.Zero;
         while (!_stop.IsSet)
         {
+            if (_monotonic.Elapsed >= nextHealth)
+            {
+                LogHealth();
+                nextHealth = _monotonic.Elapsed + HealthInterval;
+            }
+
             try
             {
                 lock (_sessionLock)
@@ -414,6 +425,27 @@ public sealed class EngineHost : IDisposable, IRadioControl
             Publish();
             _stop.Wait(TimeSpan.FromSeconds(1));
         }
+    }
+
+    /// <summary>Koliko cesto Engine upisuje memoriju i brojace audio-niti u dnevnik (plan faze B, B-103).</summary>
+    public static readonly TimeSpan HealthInterval = TimeSpan.FromMinutes(5);
+
+    private void LogRuntimeSettings()
+    {
+        var concurrent = AppContext.GetData("System.GC.Concurrent");
+        _log(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Podesavanja .NET: GC server={GCSettings.IsServerGC}, concurrent={concurrent ?? "podrazumevano (ukljucen)"}, rezim={GCSettings.LatencyMode}, procesora={Environment.ProcessorCount}"));
+    }
+
+    private void LogHealth()
+    {
+        using var process = Process.GetCurrentProcess();
+        _log(string.Create(
+            CultureInfo.InvariantCulture,
+            $"Zdravlje: privatna memorija={process.PrivateMemorySize64 / 1048576.0:F1} MB, radni skup={process.WorkingSet64 / 1048576.0:F1} MB, GC heap={GC.GetTotalMemory(false) / 1048576.0:F1} MB, GC0/1/2={GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, niti={process.Threads.Count}"));
+        _log("Audio-nit: " + AudioMetrics.Describe());
+        _log("Cuvar audio-niti (samo broji): " + AudioThreadGuard.Describe());
     }
 
     private void Step()

@@ -1,3 +1,4 @@
+using LustreRadio.Core.Diagnostics;
 using NAudio.Wave;
 
 namespace LustreRadio.Audio;
@@ -38,6 +39,8 @@ public static class Decoders
     /// </summary>
     public static AudioFileSource Open(string path, AudioFormat target, string? decoderId = null)
     {
+        AudioThreadGuard.Touch(AudioViolation.FileAccess);
+        AudioThreadGuard.Touch(AudioViolation.Decode);
         var kind = AudioFileSniffer.Detect(path);
         var candidates = decoderId is null ? CandidatesFor(kind) : [decoderId];
         if (candidates.Count == 0)

@@ -1,3 +1,5 @@
+using LustreRadio.Core.Diagnostics;
+
 namespace LustreRadio.Audio;
 
 /// <summary>Pesma u redu za pustanje: izvor zvuka i njena jacina (iz normalizacije).</summary>
@@ -72,6 +74,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
     /// <summary>Poslednja pustena pesma i gde je pocela u izlaznom toku. Sme sa druge niti.</summary>
     public bool TryGetLatestEvent(out string id, out long startFrame)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_events)
         {
             for (var i = _events.Count - 1; i >= 0; i--)
@@ -239,6 +242,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             }
 
             trackEvent = new TrackEvent { Id = track.Id, StartFrame = _outFrames };
+            AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_events)
             {
                 _events.Add(trackEvent);

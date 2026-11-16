@@ -1,3 +1,4 @@
+using LustreRadio.Core.Diagnostics;
 using Microsoft.Data.Sqlite;
 
 namespace LustreRadio.Data;
@@ -138,6 +139,7 @@ public sealed class LustreDatabase : IDisposable
 
     internal int Execute(string sql, params (string Name, object? Value)[] parameters)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_gate)
         {
             using var command = Command(sql, parameters);
@@ -147,6 +149,7 @@ public sealed class LustreDatabase : IDisposable
 
     internal T? Scalar<T>(string sql, params (string Name, object? Value)[] parameters)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_gate)
         {
             using var command = Command(sql, parameters);
@@ -157,6 +160,7 @@ public sealed class LustreDatabase : IDisposable
 
     internal List<T> Query<T>(string sql, Func<SqliteDataReader, T> map, params (string Name, object? Value)[] parameters)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_gate)
         {
             using var command = Command(sql, parameters);
@@ -174,6 +178,7 @@ public sealed class LustreDatabase : IDisposable
     /// <summary>Vise upisa kao jedna celina: ili svi ili nijedan.</summary>
     internal void InTransaction(Action action)
     {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_gate)
         {
             using var transaction = _connection.BeginTransaction();
@@ -184,6 +189,7 @@ public sealed class LustreDatabase : IDisposable
 
     private SqliteCommand Command(string sql, (string Name, object? Value)[] parameters)
     {
+        AudioThreadGuard.Touch(AudioViolation.Database);
         var command = _connection.CreateCommand();
         command.CommandText = sql;
         foreach (var (name, value) in parameters)
