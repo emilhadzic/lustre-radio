@@ -7,7 +7,7 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -95,6 +95,8 @@ jobs:
             }
           }
           Write-Host "Pregledano $($ours.Count) nasih fajlova: nema teksta LUSTRE_TEST_, LUSTRE_DATA_ROOT, ALLOW_SESSION0."
+          if (Get-ChildItem $pkg -Filter 'LustreRadio.Sim*' -File) { throw 'simulacija (LustreRadio.Sim) ne sme da bude u paketu' }
+          Write-Host 'Simulacija (LustreRadio.Sim) nije u paketu.'
           $dll = Join-Path $pkg 'e_sqlite3.dll'
           if (-not (Test-Path $dll)) { throw 'u paketu nema e_sqlite3.dll' }
           Add-Type -Namespace Native -Name Sq -MemberDefinition '[DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibraryW(string path); [DllImport("e_sqlite3", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr sqlite3_libversion();'
@@ -106,6 +108,10 @@ jobs:
         shell: pwsh
         timeout-minutes: 14
         run: ./tests/integration/nadzor.ps1 -Bin (Resolve-Path publish/LustreRadio)
+      - name: Memorija objavljenih programa (B-101, B-102, B-103; G, bez zvuka)
+        shell: pwsh
+        timeout-minutes: 9
+        run: ./tests/integration/memorija.ps1 -Bin (Resolve-Path publish/LustreRadio)
       - name: Paket za preuzimanje (radio sa interfejsom, proba)
         shell: pwsh
         run: Copy-Item packaging/proba/* publish/LustreRadio/
@@ -128,3 +134,26 @@ jobs:
           name: LustreRadio-Proba
           path: publish/LustreRadio-Proba
           retention-days: 30
+
+  simulacija:
+    # G-sim: simulacija slabog racunara. NIJE test na Celeronu N4000 niti sa Bluetooth zvucnikom.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: Build simulacije
+        run: dotnet build tests/LustreRadio.Sim/LustreRadio.Sim.csproj -c Release
+      - name: G-sim, faza B0 (merenje sadasnjeg stanja, bez kriterijuma)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem tests/LustreRadio.Sim/bin/Release -Recurse -Filter LustreRadio.Sim.exe | Select-Object -First 1
+          & $exe.FullName --all --seconds 180 --out sim-rezultati
+          if ($LASTEXITCODE -ne 0) { throw "simulacija: izlazni kod $LASTEXITCODE" }
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: G-sim
+          path: sim-rezultati
