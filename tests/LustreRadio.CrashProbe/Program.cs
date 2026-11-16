@@ -54,7 +54,7 @@ internal static class MemoryProbe
         }
     }
 
-    private sealed class Probe : LustreRadio.Audio.IDiskProbe
+    private sealed class AlwaysWorks : LustreRadio.Audio.IDiskProbe
     {
         public LustreRadio.Audio.DiskProbeOutcome Probe(string? stuckFile, TimeSpan timeout) => LustreRadio.Audio.DiskProbeOutcome.DiskWorks;
     }
@@ -80,7 +80,7 @@ internal static class MemoryProbe
         var coordinator = new LustreRadio.Audio.Coordinator(format, () => new LustreRadio.Audio.QueuedTrack("1", new Blocking(format)) { PlaybackId = Guid.NewGuid() },
             new LustreRadio.Audio.CoordinatorOptions { Stall = stall }, threaded: true)
         {
-            DiskProbe = new Probe(),
+            DiskProbe = new AlwaysWorks(),
             ThreadInspector = new Inspector(),
         };
         coordinator.RestartRequested += _ => restart.Set();
