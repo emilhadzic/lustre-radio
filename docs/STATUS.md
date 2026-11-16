@@ -10,7 +10,7 @@
 | M5 Interfejs | **prvi deo završen; vlasnik probao 15.11.2026. na svom računaru** | GitHub Actions: 412 testova, ekrani nacrtani i provereni. Proba vlasnika (miš, slušalice): radi. Otvoreno: monitor na dodir (T-TCH), mini PC, kod za oporavak PIN-a, dnevnik izmena, omot albuma, sledeća pesma, „Mirnije/Življe“. |
 | M6 Analiza | **u toku: glasnoća (LUFS) gotova 15.11.2026.** | GitHub Actions: 433 testa. Sledeće: tišina na krajevima, outro/intro, BPM, tonalitet, vokal. |
 | Faza A pre M7 (SQLite, nadzor, probne promenljive) | **završena na G 15.11.2026.; spojena u `main`** | GitHub Actions: 518 testova + integracioni test sa tvrdim rokovima. R: nije testirano. M: NOT TESTED – ACCEPTED RISK. |
-| Faza B pre M7 (planer, pisar, audio-nit) | plan čeka odobrenje | `claude/LUSTRE_RADIO_Faza_B_plan.md` |
+| Faza B pre M7 (planer, pisar, audio-nit) | **plan v8 prihvaćen 16.11.2026.; B0 završen na G i G-sim, čeka pregled vlasnika** (grana `faza-b`) | `claude/LUSTRE_RADIO_Faza_B_plan.md`; deo „Faza B, korak B0“ niže |
 | M7–M12 | nije započeto | – |
 
 Napomena: programi su u M0 samo kosturi bez funkcija.
@@ -25,6 +25,7 @@ Napomena: programi su u M0 samo kosturi bez funkcija.
 
 - Test na M se nikad ne upisuje kao prošao.
 - Simulacija (sporiji procesor, manje memorije, spor disk, opterećenje, prekid uređaja) se upisuje kao „G, simulacija“ ili „R, simulacija“. Nije test na hardveru i ne popunjava kolonu M.
+- Od faze B oznaka za simulaciju na GitHub-u je **G-sim** (program `tests/LustreRadio.Sim`, posao „simulacija“). G-sim nije test na Celeronu N4000 ni sa Bluetooth zvučnikom.
 - U starijim delovima ovog dokumenta (M0–M6) „nije probano na mini PC-ju“ znači isto: `NOT TESTED – ACCEPTED RISK`.
 
 ## M1 po koracima
@@ -309,3 +310,45 @@ Odobreno 15.11.2026. uveče: prvi odgovor Engine-a posle pokretanja čeka se do 
 Otvoreno na R (kada vlasnik može): novi paket preko postojeće baze; kraj procesa Engine-a u Task Manager-u; uspavljivanje i buđenje računara dok svira; sat vremena rada bez reda „ne odgovara“ u dnevniku nadzora. Opis: `claude/LUSTRE_RADIO_Faza_A_izvestaj.md`, odeljak 7.
 
 Šta faza A NE dokazuje: da se muzika čuje posle oporavka (na G nema zvuka); da granica od 20 s ne pravi lažna prekidanja na sporom i zauzetom računaru; da buđenje pravog računara ne zbuni nadzor (testirano samo kao simulacija); da prava baza vlasnika radi sa novim SQLite-om (probna radi).
+
+## Faza B, korak B0 (16.11.2026.) – merenje sadašnjeg stanja
+
+Grana `faza-b` (od `main` 3db173d). Plan: `claude/LUSTRE_RADIO_Faza_B_plan.md`, v8. Korak B0 ne menja ponašanje programa: dodaje samo merenje.
+
+Šta je dodato:
+- `Core/Diagnostics/AudioThreadGuard.cs`: čuvar audio-niti. Obeležava nit za pripremu zvuka i nit zvučnog uređaja; mesta koja audio-nit ne sme da dotakne (fajl, dekoder, baza, dnevnik, brava) se **samo broje**.
+- `Core/Diagnostics/AudioMetrics.cs`: trajanje svakog koraka pripreme zvuka, memorija zauzeta na toj niti, prazan izlaz.
+- Engine upisuje u dnevnik podešavanja .NET pri pokretanju, a memoriju, brojače audio-niti i čuvara pri pokretanju i na svakih 5 minuta.
+- `tests/integration/memorija.ps1` (B-101, B-102, B-103) i `tests/LustreRadio.Sim` (G-sim, 4 scenarija po 180 s). Simulacija ne ide u paket (provera paketa).
+
+Testovi (GitHub Actions, run 43895687122, izmena `0eddb56`):
+
+| Test | Mesto | Rezultat |
+|---|---|---|
+| Postojećih 518 testova | G | PASS |
+| 5 novih testova čuvara i brojača | G | PASS (ukupno 523) |
+| Integracioni test nadzora | G | PASS |
+| B-101 privatna memorija Engine-a u mirovanju, posle 5 min (prag 80 MB) | G | **PASS**: 17,7 MB |
+| B-102 zbir Engine + UI + Watchdog u mirovanju | G | izmereno 66,6 MB (17,7 + 37,4 + 11,4); budžet 240 MB **nije potvrđen** |
+| B-103 brojači u dnevniku na 5 min | G | **PASS** (3 zapisa za 5 min) |
+| Svi testovi na R | R | NOT TESTED |
+| Sve na mini PC-ju | M | NOT TESTED – ACCEPTED RISK |
+
+G-sim, sadašnje stanje (bez kriterijuma; procesor GitHub računara AMD EPYC 9V74; faktor za N4000 je procena):
+
+| Scenario | Izmerena brzina jedne niti | Pesama | Prazan izlaz | Najduži korak pripreme | Najmanja zaliha | Memorija na audio-niti | Čuvar: fajl / dekoder / baza / dnevnik / brava |
+|---|---|---|---|---|---|---|---|
+| bez ograničenja | 1,01× | 5 | 0 | 19,2 ms | 0,850 s | 507 KB | 10 / 9.644 / 5 / 0 / 8.518 |
+| procena N4000 | 0,86× | 5 | 0 | **100,5 ms** | 0,759 s | 507 KB | 10 / 9.627 / 5 / 0 / 8.501 |
+| duplo strože | 0,47× | 5 | 0 | **414,4 ms** | 0,447 s | 507 KB | 10 / 9.640 / 5 / 0 / 8.514 |
+| procena N4000 + opterećenje | 0,26× | 5 | 0 | 28,4 ms | 0,816 s | 507 KB | 10 / 9.636 / 5 / 0 / 8.510 |
+
+Šta ovo pokazuje:
+- Sadašnja audio-nit radi sve što po planu ne sme: otvara fajlove, dekodira, upisuje istoriju u bazu, čeka brave i zauzima memoriju. Brojevi su osnova za poređenje posle B2–B5.
+- Pod ograničenim procesorom najduži korak pripreme ide do 100 ms (procena N4000) i 414 ms (duplo strože), ali u 180 s nije bilo praznog izlaza.
+- Ograničenje procesora važi za ceo proces. Jedna nit zato dobija do 0,86× brzine, a ne 0,4×, kad radi sama. To je granica ove simulacije.
+
+Podešavanja .NET (provera iz B0; spec. 3.4 traži Workstation GC bez concurrent režima i ReadyToRun):
+- izmereno u dnevniku Engine-a na G: `GC server=False, concurrent=podrazumevano (uključen), režim=Interactive`;
+- ReadyToRun nije uključen u objavljivanju;
+- **odstupanje od specifikacije je prijavljeno vlasniku; ništa nije menjano** dok ne odobri.
