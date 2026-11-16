@@ -33,6 +33,9 @@ internal sealed class StartupFaults
     /// <summary>Poziva se pre svakog imenovanog koraka; moze da baci gresku.</summary>
     public Action<string>? BeforeStep { get; init; }
 
+    /// <summary>Dozvoljava rad bez nadogradnje u testu, da bi se proverili koraci P, O i V (u programu je iskljucen).</summary>
+    public bool AllowReadOnlyMode { get; init; }
+
     /// <summary>Menja privremenu kopiju pre provere (ostecenje, brisanje reda).</summary>
     public Action<string>? TamperCopy { get; init; }
 
@@ -51,6 +54,14 @@ internal sealed class StartupFaults
 /// </summary>
 public static class DatabaseStartup
 {
+    /// <summary>
+    /// Rad bez nadogradnje je ISKLJUCEN (16.11.2026., korak B1). Provera P2 iz plana (BEGIN IMMEDIATE mora biti odbijen
+    /// na vezi samo za citanje) ne prolazi u normalnom slucaju: SQLite 3.53.3 na Windows-u ne odbija BEGIN IMMEDIATE
+    /// na takvoj vezi (pravi upisi se odbijaju; test B-184). Po uslovu iz plana (N5) tada se rad bez nadogradnje ukida,
+    /// a Engine odbija pokretanje kad kopija ili nadogradnja ne uspe. Menja se samo uz odobrenje vlasnika.
+    /// </summary>
+    public const bool ReadOnlyModeEnabled = false;
+
     private static long _writableOpened;
     private static long _readOnlyOpened;
 
@@ -127,6 +138,12 @@ public static class DatabaseStartup
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or SqliteException or InvalidOperationException or CopyRejectedException)
         {
             reason = ex.Message;
+        }
+
+        if (!ReadOnlyModeEnabled && faults?.AllowReadOnlyMode != true)
+        {
+            say("Baza NIJE nadogradjena: " + reason + ". Rad bez nadogradnje je iskljucen; Engine se ne pokrece.");
+            throw new DatabaseStartupException($"Kopija ili nadogradnja baze nije uspela ({reason}). Rad bez nadogradnje je iskljucen; Engine se ne pokrece. Baza je ostala sema 1.");
         }
 
         say("Baza NIJE nadogradjena: " + reason + ". Rad bez nadogradnje.");

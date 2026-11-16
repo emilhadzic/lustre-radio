@@ -36,7 +36,7 @@ public sealed class WithoutUpgradeTests : IDisposable
         }
     }
 
-    [Fact] // B-151
+    [Fact(Skip = "rad bez nadogradnje je iskljucen (P2 ne prolazi; B1, 16.11.2026.); ceka odluku vlasnika")] // B-151
     public void B151_EveryBlockedCommand_IsRefused_WithMessage_AndNothingIsWritten()
     {
         using (var raw = new SqliteConnection($"Data Source={_path};Pooling=False"))
@@ -89,7 +89,7 @@ public sealed class WithoutUpgradeTests : IDisposable
         Assert.Equal(before, Sha(_path));
     }
 
-    [Fact] // B-150, kratka verzija na G (bez zvuka; verzija od 10 minuta sa zvukom nije pokrenuta)
+    [Fact(Skip = "rad bez nadogradnje je iskljucen (P2 ne prolazi; B1, 16.11.2026.); ceka odluku vlasnika")] // B-150, kratka verzija na G (bez zvuka; verzija od 10 minuta sa zvukom nije pokrenuta)
     public void B150_EngineHost_WithoutUpgrade_ReportsMode_SkipsScan_FileUnchanged()
     {
         BlockBackups();
@@ -107,6 +107,16 @@ public sealed class WithoutUpgradeTests : IDisposable
             host.SetVolume(0.4);
         }
 
+        Assert.Equal(before, Sha(_path));
+    }
+
+    [Fact] // Engine odbija pokretanje kad kopija ne moze da se napravi (rad bez nadogradnje je iskljucen)
+    public void EngineHost_BackupImpossible_RefusesToStart_FileUnchanged()
+    {
+        BlockBackups();
+        var before = Sha(_path);
+        var error = Assert.Throws<DatabaseStartupException>(() => new EngineHost(new EngineHostOptions { DataRoot = _root }).Dispose());
+        Assert.Contains("iskljucen", error.Message, StringComparison.Ordinal);
         Assert.Equal(before, Sha(_path));
     }
 

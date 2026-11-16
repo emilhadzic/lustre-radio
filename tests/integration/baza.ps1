@@ -94,18 +94,17 @@ $after = Counts
 if ($after -ne $before) { throw "podaci posle povratka se razlikuju: pre '$before', posle '$after'" }
 $results['B-110'] = "PASS: faza A radi sa vracenom bazom; $after (isto kao pre nadogradnje)"
 
-Write-Host '== B-155 (prvi deo) i B-157: kopija ne moze da se napravi -> rad bez nadogradnje'
+Write-Host '== B-155 (prvi deo) i B-157: kopija ne moze da se napravi -> Engine odbija pokretanje (rad bez nadogradnje je iskljucen)'
 Rename-Item $backups "$backups.sacuvano"
 Set-Content $backups 'fajl umesto foldera'
 $dbSha = Sha $db; $walSha = Sha "$db-wal"
-$lines = RunVersion $Bin 'Baza NIJE nadogradjena'
-if (-not ($lines | Where-Object { $_ -match 'sema 1 \(NIJE nadogradjena' })) { throw 'nema reda o radu bez nadogradnje' }
-if ((Sha $db) -ne $dbSha) { throw 'fajl baze se promenio u radu bez nadogradnje' }
-if ($walSha -ne '-' -and (Sha "$db-wal") -ne $walSha) { throw 'WAL se promenio u radu bez nadogradnje' }
-$results['B-155a'] = 'PASS: "Baza NIJE nadogradjena", rad bez nadogradnje; bajtovi baze isti'
+$lines = RunVersion $Bin 'Rad bez nadogradnje je iskljucen'
+if ((Sha $db) -ne $dbSha) { throw 'fajl baze se promenio' }
+if ($walSha -ne '-' -and (Sha "$db-wal") -ne $walSha) { throw 'WAL se promenio' }
+$results['B-155a'] = 'PASS (izmenjeno ocekivanje): "Baza NIJE nadogradjena ... Rad bez nadogradnje je iskljucen; Engine se ne pokrece"; bajtovi baze isti'
 $lines = RunVersion $PhaseA 'Baza: SQLite'
-if (-not ($lines | Where-Object { $_ -match 'sema 1' }) -or ($lines | Where-Object { $_ -match 'novije verzije' })) { throw 'faza A ne radi posle rada bez nadogradnje' }
-$results['B-157'] = 'PASS: faza A otvara bazu posle rada nove verzije bez nadogradnje'
+if (-not ($lines | Where-Object { $_ -match 'sema 1' }) -or ($lines | Where-Object { $_ -match 'novije verzije' })) { throw 'faza A ne radi posle odbijenog pokretanja nove verzije' }
+$results['B-157'] = 'PASS: faza A otvara bazu posle odbijenog pokretanja nove verzije'
 
 Write-Host '== B-185: Engine nasilno prekinut tokom ucitavanja, 20 puta'
 $dbSha = Sha $db; $walSha = Sha "$db-wal"
@@ -120,8 +119,8 @@ for ($i = 1; $i -le 20; $i++) {
     if ((Sha $db) -ne $dbSha) { throw "posle prekida $i se fajl baze promenio" }
     if ($walSha -ne '-' -and (Sha "$db-wal") -ne $walSha) { throw "posle prekida $i se WAL promenio" }
 }
-[void](RunVersion $Bin 'Baza NIJE nadogradjena')
-$results['B-185'] = 'PASS: 20 prekida; bajtovi baze i WAL-a isti; sledece pokretanje radi'
+[void](RunVersion $Bin 'Rad bez nadogradnje je iskljucen')
+$results['B-185'] = 'PASS: 20 prekida tokom pokretanja; bajtovi baze i WAL-a isti; sledece pokretanje ponovo uredno odbija rad'
 
 Write-Host '== B-155 (drugi deo): kopija ponovo moguca -> nadogradnja'
 Remove-Item $backups

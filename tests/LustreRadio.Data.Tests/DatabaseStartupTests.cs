@@ -73,16 +73,13 @@ public sealed class DatabaseStartupTests : IDisposable
         Assert.Equal(5L, Long(raw, "SELECT count(*) FROM play_history WHERE playback_id IS NULL"));
     }
 
-    [Fact] // B-45
-    public void B45_MigrationInterrupted_StaysSchema1_AndRunsWithoutUpgrade()
+    [Fact] // B-45 (rad bez nadogradnje je iskljucen: Engine odbija pokretanje, baza ostaje sema 1)
+    public void B45_MigrationInterrupted_StaysSchema1_StartRefused()
     {
         File.Copy(Fixture, _path);
-        var result = DatabaseStartup.Open(_path, _backups, null, new StartupFaults { BeforeStep = s => { if (s == "migrate") { throw new IOException("prekid usred nadogradnje"); } } });
-        using (result.Database)
-        {
-            Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
-            Assert.Contains("prekid", result.Reason);
-        }
+        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups, null, new StartupFaults { BeforeStep = s => { if (s == "migrate") { throw new IOException("prekid usred nadogradnje"); } } }));
+        Assert.Contains("prekid", error.Message);
+        Assert.Contains("iskljucen", error.Message);
 
         using var raw = Raw(_path, readOnly: true);
         Assert.Equal(1L, Long(raw, "PRAGMA user_version"));
@@ -163,10 +160,15 @@ public sealed class DatabaseStartupTests : IDisposable
         writer.Start();
 
         Thread.Sleep(200);
-        DatabaseStartupResult result;
         try
         {
-            result = DatabaseStartup.Open(_path, _backups);
+            var result = DatabaseStartup.Open(_path, _backups);
+            result.Database.Dispose();
+            _output.WriteLine($"Rezim: {result.Mode}");
+        }
+        catch (DatabaseStartupException ex)
+        {
+            _output.WriteLine("Pokretanje odbijeno: " + ex.Message);
         }
         finally
         {
@@ -174,8 +176,6 @@ public sealed class DatabaseStartupTests : IDisposable
             writer.Join();
         }
 
-        result.Database.Dispose();
-        _output.WriteLine($"Rezim: {result.Mode}; razlog: {result.Reason}");
         foreach (var backup in Directory.GetFiles(_backups, "*.db"))
         {
             using var raw = Raw(backup, readOnly: true);
@@ -187,11 +187,11 @@ public sealed class DatabaseStartupTests : IDisposable
     [Theory] // B-93
     [InlineData("izmenjeni-bajtovi")]
     [InlineData("odsecen-fajl")]
-    public void B93_DamagedCopy_IsRejected_NoUpgrade(string damage)
+    public void B93_DamagedCopy_IsRejected_NoUpgrade_StartRefused(string damage)
     {
         File.Copy(Fixture, _path);
         var before = ByteFingerprint.Of(_path);
-        var result = DatabaseStartup.Open(_path, _backups, null, new StartupFaults
+        Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups, null, new StartupFaults
         {
             TamperCopy = copy =>
             {
@@ -206,27 +206,19 @@ public sealed class DatabaseStartupTests : IDisposable
                     stream.Write(Enumerable.Repeat((byte)0xA5, 4096).ToArray());
                 }
             },
-        });
-        result.Database.Dispose();
-        Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
+        }));
         Assert.Empty(Directory.GetFiles(_backups, "*.db"));
         Assert.True(ByteFingerprint.Of(_path).SameDataAs(before));
     }
 
-    [Fact] // B-94
-    public void B94_BackupFolderUnavailable_NoUpgrade_RadioCanRun()
+    [Fact] // B-94 (rad bez nadogradnje je iskljucen: Engine odbija pokretanje, baza netaknuta)
+    public void B94_BackupFolderUnavailable_NoUpgrade_StartRefused()
     {
         File.Copy(Fixture, _path);
         File.WriteAllText(_backups, "ovo je fajl, a ne folder");
         var before = ByteFingerprint.Of(_path);
-        var result = DatabaseStartup.Open(_path, _backups);
-        using (result.Database)
-        {
-            Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
-            Assert.True(result.Database.IsDetachedCopy);
-            Assert.Equal(5, result.Database.Tracks.GetAll().Count);
-        }
-
+        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups));
+        Assert.Contains("sema 1", error.Message);
         Assert.True(ByteFingerprint.Of(_path).SameDataAs(before));
     }
 
@@ -234,27 +226,23 @@ public sealed class DatabaseStartupTests : IDisposable
     public void B94_NoSpaceDuringBackup_NoUpgrade()
     {
         File.Copy(Fixture, _path);
-        var result = DatabaseStartup.Open(_path, _backups, null, new StartupFaults { BeforeStep = s => { if (s == "flush") { throw new IOException("Nema dovoljno mesta na disku."); } } });
-        result.Database.Dispose();
-        Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
-        Assert.Contains("mesta", result.Reason);
+        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups, null, new StartupFaults { BeforeStep = s => { if (s == "flush") { throw new IOException("Nema dovoljno mesta na disku."); } } }));
+        Assert.Contains("mesta", error.Message);
     }
 
     [Fact] // B-95
     public void B95_CopyMissingOneRow_IsRejected()
     {
         File.Copy(Fixture, _path);
-        var result = DatabaseStartup.Open(_path, _backups, null, new StartupFaults
+        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups, null, new StartupFaults
         {
             TamperCopy = copy =>
             {
                 using var raw = Raw(copy, readOnly: false);
                 Exec(raw, "DELETE FROM play_history WHERE id = (SELECT max(id) FROM play_history)");
             },
-        });
-        result.Database.Dispose();
-        Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
-        Assert.Contains("sadrzaj", result.Reason);
+        }));
+        Assert.Contains("sadrzaj", error.Message);
     }
 
     [Fact] // B-96
@@ -273,11 +261,11 @@ public sealed class DatabaseStartupTests : IDisposable
         Assert.Equal(5L, Long(raw, "SELECT count(*) FROM tracks"));
     }
 
-    [Theory] // B-152, B-158
+    [Theory] // B-152, B-158: NALAZ iz B1 - provera P2 ne prolazi (BEGIN IMMEDIATE nije odbijen); bajtovi ostaju isti
     [InlineData("uredno-zatvorena")]
     [InlineData("posle-pada-sa-WAL-om")]
     [InlineData("WAL-obrisan-pre")]
-    public void B152_B158_WithoutUpgrade_ProbePasses_BytesUnchanged(string state)
+    public void B152_B158_ProbeP2DoesNotPass_StartRefused_BytesUnchanged(string state)
     {
         var path = state switch
         {
@@ -286,11 +274,8 @@ public sealed class DatabaseStartupTests : IDisposable
         };
         File.WriteAllText(_backups, "blokira kopiju"); // kopija ne moze da se napravi -> rad bez nadogradnje
         var before = ByteFingerprint.Of(path);
-        var result = DatabaseStartup.Open(path, _backups);
-        using (result.Database)
-        {
-            Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
-        }
+        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(path, _backups, null, new StartupFaults { AllowReadOnlyMode = true }));
+        Assert.Contains("P2", error.Message);
 
         var after = ByteFingerprint.Of(path);
         Assert.True(after.SameDataAs(before), $"bajtovi su se promenili ({state})");
@@ -303,24 +288,22 @@ public sealed class DatabaseStartupTests : IDisposable
         File.Copy(Fixture, _path);
         File.WriteAllText(_backups, "blokira kopiju");
         var before = ByteFingerprint.Of(_path);
-        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups, null, new StartupFaults { ProbeConnection = p => Raw(p, readOnly: false) }));
+        var error = Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups, null, new StartupFaults { AllowReadOnlyMode = true, ProbeConnection = p => Raw(p, readOnly: false) }));
         Assert.Contains("P1", error.Message);
         Assert.True(ByteFingerprint.Of(_path).SameDataAs(before));
     }
 
     [Fact] // B-159
-    public void B159_WithoutUpgrade_NoWritableConnectionToTheFile()
+    public void B159_FailedBackup_NoWritableConnectionToTheFile()
     {
         File.Copy(Fixture, _path);
         File.WriteAllText(_backups, "blokira kopiju");
         var writable = DatabaseStartup.WritableConnectionsOpened;
-        var result = DatabaseStartup.Open(_path, _backups);
-        result.Database.Dispose();
-        Assert.Equal(DatabaseMode.NotUpgraded, result.Mode);
+        Assert.Throws<DatabaseStartupException>(() => DatabaseStartup.Open(_path, _backups));
         Assert.Equal(writable, DatabaseStartup.WritableConnectionsOpened);
     }
 
-    [Fact] // B-180
+    [Fact(Skip = "rad bez nadogradnje je iskljucen (P2 ne prolazi; B1, 16.11.2026.); ceka odluku vlasnika")] // B-180
     public void B180_BytesChangedDuringReadOnlyStart_StartRefused()
     {
         File.Copy(Fixture, _path);
@@ -337,7 +320,7 @@ public sealed class DatabaseStartupTests : IDisposable
         Assert.Contains("V1", error.Message);
     }
 
-    [Fact] // B-181 (izvedba iz B1: kopija u memoriji), B-186
+    [Fact(Skip = "rad bez nadogradnje je iskljucen (P2 ne prolazi; B1, 16.11.2026.); ceka odluku vlasnika")] // B-181 (izvedba iz B1: kopija u memoriji), B-186
     public void B181_B186_WithoutUpgrade_FileIsClosed_WritesStayInMemory()
     {
         File.Copy(Fixture, _path);
