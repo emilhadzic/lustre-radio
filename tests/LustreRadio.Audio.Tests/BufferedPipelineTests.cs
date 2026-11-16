@@ -271,6 +271,17 @@ public sealed class BufferedPipelineTests(ITestOutputHelper output)
         var a = Render(legacy);
         var b = Render(current);
         output.WriteLine($"faza A: {a.Length / 2} frejmova; B3: {b.Length / 2} frejmova");
+        for (var i = 0; i < Math.Max(legacy.Events.Count, current.Events.Count); i++)
+        {
+            var la = i < legacy.Events.Count ? $"{legacy.Events[i].Id}@{legacy.Events[i].StartFrame}" : "-";
+            var lb = i < current.Events.Count ? $"{current.Events[i].Id}@{current.Events[i].StartFrame}" : "-";
+            if (la != lb)
+            {
+                output.WriteLine($"razlika u dogadjaju {i}: faza A {la}, B3 {lb} (trajanja: {string.Join(", ", specs.Skip(Math.Max(0, i - 2)).Take(4).Select(s => s.Id + "=" + s.Seconds.ToString("F2", System.Globalization.CultureInfo.InvariantCulture)))})");
+                break;
+            }
+        }
+
         Assert.Equal(a.Length, b.Length);
         var firstDiff = -1;
         for (var i = 0; i < a.Length && firstDiff < 0; i++)

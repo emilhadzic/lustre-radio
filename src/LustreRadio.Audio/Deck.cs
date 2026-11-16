@@ -157,6 +157,13 @@ public sealed class Deck
         {
             if (Starved)
             {
+                if (buffered.Feed.Ended && buffered.Feed.EndReason == Core.History.StopReason.DecoderStall)
+                {
+                    // spora ili zaglavljena pesma je napustena dok je deck bio prazan: ostatak manji od N2 se ne pusta (bez "seckanja")
+                    Finished = true;
+                    return 0;
+                }
+
                 if (buffered.Feed.Available < Math.Max(1, ResumeFrames) && !buffered.Feed.Ended)
                 {
                     return 0;
