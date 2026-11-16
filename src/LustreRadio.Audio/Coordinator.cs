@@ -128,6 +128,9 @@ public sealed class Coordinator : IDisposable
     /// <summary>Broj napustenih radnih niti u ovom procesu (najvise <see cref="StallOptions.MaxAbandoned"/>).</summary>
     public int Abandoned => _abandonedWorkers.Count;
 
+    /// <summary>Najniza popunjenost decka koji svira (frejmova), merena u svakom koraku koordinatora (B-78).</summary>
+    public long MinMixingFillFrames { get; private set; } = long.MaxValue;
+
     /// <summary>Broj zaglavljenih poziva dekodera (slucaj 2) u ovom procesu.</summary>
     public long StuckCalls => Interlocked.Read(ref _stuckCalls);
 
@@ -325,6 +328,14 @@ public sealed class Coordinator : IDisposable
             {
                 slot.State = State.Published;
                 progress = true;
+            }
+        }
+
+        foreach (var s in _slots)
+        {
+            if (s.State == State.Mixing && !s.Feed.Ended && s.Feed.Available < MinMixingFillFrames)
+            {
+                MinMixingFillFrames = s.Feed.Available;
             }
         }
 

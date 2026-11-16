@@ -178,7 +178,7 @@ public sealed class StallTests(ITestOutputHelper output)
         output.WriteLine($"A do {lastA:F2} s; B od {firstB:F2} s; tisina {rig.Sequencer.StarvedFrames / (double)Rate:F3} s");
         Assert.Equal(1, rig.Coordinator.Abandoned);
         Assert.InRange(firstB - lastA, 0, 0.2);
-        Assert.False(audio.Skip((int)F(firstB + 0.1)).Any(v => v > 0.4f)); // nema povratka na A
+        Assert.DoesNotContain(audio.Skip((int)F(firstB + 0.1)), v => v > 0.4f); // nema povratka na A
         var o = rig.Events.Outcomes();
         Assert.Equal((PlaybackStatus.Stopped, StopReason.DecoderStall), (o[1].Single().Status, o[1].Single().Reason));
         Assert.Equal("1", Assert.Single(rig.Coordinator.StuckTracks));

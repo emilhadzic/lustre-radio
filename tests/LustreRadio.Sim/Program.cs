@@ -185,6 +185,8 @@ internal static class Child
             }
 
             device.Stop();
+            Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"G-SIM-DECK | {result.Scenario} | pesama {session.Sequencer.Events.Count} | prazan bafer decka {session.Sequencer.StarvedFrames / (double)format.SampleRate:F2} s | najniza popunjenost decka koji svira {(session.Coordinator.MinMixingFillFrames == long.MaxValue ? 0 : session.Coordinator.MinMixingFillFrames) / (double)format.SampleRate:F2} s | preuzimanja {session.Sequencer.Takeovers} | zakasnelih prelaza {session.Sequencer.LateTransitions} | napustenih niti {session.Coordinator.Abandoned}"));
             result.TracksStarted = started;
             result.DeviceUnderrunEvents = device.UnderrunEvents;
             result.DeviceUnderrunFrames = device.UnderrunFrames;
