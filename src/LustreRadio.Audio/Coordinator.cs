@@ -86,6 +86,9 @@ public sealed class Coordinator : IDisposable
         public long PreparedSeq { get; set; } = -1;
 
         public long PreparedAt { get; set; } = -1;
+
+        /// <summary>Posao "otvori pesmu ovog decka" (jedan po decku, bez zauzimanja memorije pri svakom pokusaju).</summary>
+        public Func<QueuedTrack?>? OpenJob { get; set; }
     }
 
     private readonly AudioFormat _format;
@@ -304,7 +307,15 @@ public sealed class Coordinator : IDisposable
         slot.State = State.Free;
     }
 
-    private void PublishPlan() => _planSnapshot = new PlanSnapshot([.. _plan], _plan.Count < 3 ? _planReason : null);
+    private void PublishPlan()
+    {
+        if (_planner is FuncPlanner)
+        {
+            return; // bez stvarnog plana (testovi zvuka, Bench): nema sta da se prikaze
+        }
+
+        _planSnapshot = new PlanSnapshot([.. _plan], _plan.Count < 3 ? _planReason : null);
+    }
 
     private void DetectTakes()
     {
@@ -568,7 +579,8 @@ public sealed class Coordinator : IDisposable
             free.Ticket = -1;
             free.PreparedSeq = -1;
             free.PreparedAt = -1;
-            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, () => _planner.Open(item)), now);
+            free.OpenJob ??= () => _planner.Open(free.Planned!);
+            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, free.OpenJob), now);
             return true;
         }
 
@@ -606,8 +618,9 @@ public sealed class Coordinator : IDisposable
                     _log("Priprema pesme nije uspela: " + result.Error.Message);
                 }
 
-                // pesma ne moze da se otvori (fajl nestao, menjan, dekoder): ispada iz plana bez traga u rotaciji
-                if (planned is not null)
+                // pesma ne moze da se otvori (fajl nestao, menjan, dekoder): ispada iz plana bez traga u rotaciji.
+                // Planer iz funkcije ima jednu stalnu stavku: samo se ponovo pokusava (bez novih objekata).
+                if (planned is not null && _planner is not FuncPlanner)
                 {
                     _plan.Remove(planned);
                     if (_planner is not FuncPlanner)

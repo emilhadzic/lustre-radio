@@ -13,7 +13,10 @@ internal sealed class RenderClock(DateTime start) : IClock
 {
     public Func<long>? Frames { get; set; }
 
-    public DateTime NowLocal => start.AddSeconds((Frames?.Invoke() ?? 0) / 44100.0);
+    /// <summary>Pomak sata (B4: pauza preko granice termina – vreme prolazi, zvuk se ne pravi).</summary>
+    public TimeSpan Shift { get; set; }
+
+    public DateTime NowLocal => start.Add(Shift).AddSeconds((Frames?.Invoke() ?? 0) / 44100.0);
 }
 
 /// <summary>Privremena biblioteka: pravi WAV fajlove (tonove), bazu i skenira ih.</summary>

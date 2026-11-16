@@ -7,6 +7,7 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\LustreRadio.Core\LustreRadio.Core.csproj" />
+    <ProjectReference Include="..\..\src\LustreRadio.Audio\LustreRadio.Audio.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Data\LustreRadio.Data.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Playout\LustreRadio.Playout.csproj" />
   </ItemGroup>

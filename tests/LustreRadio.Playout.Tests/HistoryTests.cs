@@ -613,6 +613,75 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
         Assert.Contains("PROBA:", text, StringComparison.Ordinal);
     }
 
+    [Theory] // B-198: pad u cetiri tacke oko kraja pesme
+    [InlineData(1)]
+    [InlineData(2)]
+    [InlineData(3)]
+    [InlineData(4)]
+    public void B198_CrashAroundTrackEnd(int point)
+    {
+        var h = Open();
+        var a = Guid.CreateVersion7();
+        var b = Guid.CreateVersion7();
+        h.Prepared(a, 1, 1, 1, 1, null);
+        h.Started(a, 1, 0);
+        switch (point)
+        {
+            case 1: // pretapanje potvrdjeno, kraj repa nije
+                h.Prepared(b, 2, 1, 1, 1, null);
+                h.Crossfade(b, 2, a, 1, 100);
+                break;
+            case 2: // pretapanje pocelo, zapis jos nije u crnoj kutiji (koordinator ga nije prepisao)
+                h.Prepared(b, 2, 1, 1, 1, null);
+                break;
+            case 3: // pesma bez sledece zavrsila, kraj na disku
+                h.Ended(a, 1, 200, 200);
+                break;
+            case 4: // pesma bez sledece zavrsila, kraj jos nije zapisan
+                break;
+        }
+
+        h.Abandon();
+        using var again = Open();
+        var expected = point switch
+        {
+            1 => ("nepotvrdjena-c", "nepotvrdjena-b"),
+            2 => ("nepotvrdjena-b", "nepotvrdjena-a"),
+            3 => ("odsvirana", (string?)null),
+            _ => ("nepotvrdjena-b", (string?)null),
+        };
+        Assert.Equal(expected.Item1, Row(a).Status);
+        if (expected.Item2 is { } bStatus)
+        {
+            Assert.Equal(bStatus, Row(b).Status);
+        }
+
+        Assert.DoesNotContain(Rows(), r => r.Status == "prekinuta");
+    }
+
+    [Fact] // B-84, B-85, B-87: pad posle "pripremljena" (pesma krenula ili nije) -> NEPOTVRDJENO (a), jedan red; snimak stanja se ne koristi
+    public void B84_B85_B87_CrashAfterPrepared_UnconfirmedA_OneRow()
+    {
+        var h = Open();
+        var pid = Guid.CreateVersion7();
+        h.Prepared(pid, 9, 1, 1, 1, null);
+        h.Abandon();
+        using var again = Open();
+        Assert.Equal("nepotvrdjena-a", Row(pid).Status);
+        Assert.Single(Rows(), r => r.PlaybackId == pid.ToString());
+    }
+
+    [Fact] // B-195: memorija 3 napustene + 1 zaglavljene radne niti, izmerena u POSEBNOM procesu (lazni dekoder)
+    public void B195_MemoryOfStuckThreads_MeasuredInSeparateProcess()
+    {
+        var start = new ProcessStartInfo(ProbeExe(), ["memorija"]) { RedirectStandardOutput = true, UseShellExecute = false };
+        using var process = Process.Start(start)!;
+        var text = process.StandardOutput.ReadToEnd();
+        Assert.True(process.WaitForExit(120_000));
+        output.WriteLine(text.Trim());
+        Assert.Contains("MEMORIJA | napustenih niti 3", text, StringComparison.Ordinal);
+    }
+
     [Fact] // B-221: pisar ne radi; 30 pesama; pravi pad procesa; oporavak iz crne kutije
     public void B221_ScribeNotRunning_ProcessCrash_All30RecoveredFromBlackBox()
     {
