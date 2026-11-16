@@ -425,3 +425,34 @@ Izvedbene odluke u B2 (u okviru plana; bez izmene specifikacije):
 - Pravilo „pesma kreće kad je `pripremljena` potvrđena ili posle 2 s“ dolazi sa karticama (B4); B-86 je u B4.
 - Dugme Sledeća tokom repa (red 4 tabele statusa) danas sekvencer ne prihvata (postojeće ponašanje); dolazi u B3.
 - Postojeći testovi radija čitaju istoriju posle završetka emitovanja (red u bazi nastaje tek kad je ishod poznat); očekivanja nisu menjana, osim broja redova u „Proveri sistema“ (9 → 10).
+
+## Faza B, korak B3 (16.–17.11.2026.) – baferi deckova, koordinator, zastoji
+
+Urađeno (grana `faza-b`): bafer decka od 5 s po decku (jedan pisac, jedan čitalac, bez brave); koordinator (jedini upisuje zvuk u bafere, priprema sledeću pesmu); radna nit za dekodiranje (otvara i dekodira u sopstveni bafer, delovi od 4.096 frejmova); mesto za predaju sledeće pesme (`Interlocked.Exchange` / `CompareExchange`); nit za mešanje čita samo gotov zvuk i ne čeka; pravilo „nema povratka“; prepoznavanje zastoja (T, N2, T2, P – privremene vrednosti), proba diska sa istog volumena mimo keša, stanje radne niti (D7-5), najviše 3 napuštene niti, kontrolisano ponovno pokretanje (izlazni kod 4) i karantin do ponoći (najviše polovina dozvoljenih); razvrstavanje grešaka, potvrda eksplicitne greške u pozadini, ponovno merenje dužine; „Zvuk prekinut: …“ u „Proveri sistema“.
+
+Nalaz tokom B3 (ispravljen): koordinator je zadavao deo dekodiranja i kad u baferu decka nije bilo mesta za ceo deo; ostatak dela se gubio (do 4.095 frejmova, oko 0,09 s, po pesmi dužoj od 5 s). Otkrio ga je B-04; posle ispravke izlaz je jednak fazi A, uzorak po uzorak.
+
+Rezultati (G, run 43972374926, 17.11.2026.): build i svi koraci prošli; 684 testa prošla, 4 preskočena (rad bez nadogradnje, isključen).
+
+| Test | Stanje | Napomena |
+|---|---|---|
+| B-04 | PASS (G) | 50 pesama: izlaz jednak fazi A, uzorak po uzorak (8.963.830 frejmova) |
+| B-05 | PASS (G) | postojeći testovi zvuka i radija prolaze bez izmene očekivanja |
+| B-10 – B-15, B-17 | PASS (G) | B-16 pokriva postojeći test nastavka sa pozicije |
+| B-70 – B-74, B-76, B-77 | PASS (G) | virtuelno vreme; B-74: najveći skok pri preuzimanju 0,0107 (čist ton 0,0160) |
+| B-75 | PASS (G), u izmenjenom obliku | „presuši samo deck koji ulazi“ dok A ima zvuk nije dostižno: B kreće sa punim baferom (5 s), a A ne može imati više zvuka od B. Test proverava da se A stišava po rasporedu dok dekoder pesme B stoji. |
+| B-140 – B-148 | PASS (G) | B-148: 1.000 nasumičnih rasporeda zastoja, 0 uzoraka A posle preuzimanja, glasnoća A nikad ne raste |
+| B-121 – B-125, B-127 | PASS (G) | lažna proba i lažno stanje niti, virtuelno vreme |
+| B-128, B-129, B-189 – B-193 | PASS (G) | B-129: razvrstavanje po vrstama izuzetaka (oštećeni pravi fajlovi po dekoderu nisu isprobani) |
+| B-194, B-197, B-205 | PASS (G) | prave niti; B-197: CancelSynchronousIo prekinuo čitanje; B-205: prepoznato bez probe |
+| B-195 | NOT TESTED | merenje u istom procesu sa drugim testovima nije pouzdano (+285,9 MB je šum); treba posebno merenje |
+| B-196 | NOT TESTED | treba probni Engine i pravi nadzor (D8-6); prelazi u B6 zajedno sa B-224 |
+| B-120, B-126 | izvršeno (G, posao „ogledi“) | tabela; virtuelno vreme; P nije meren; T i N2 se u ovim scenarijima ne razlikuju |
+| B-223 | izvršeno (G) | S1–S4 merene, 5 ponavljanja; svih 13 parova ispunjava K1–K3; S5, S7, S8 i G-sim nisu mereni |
+| B-204 | delimično | samo kroz B-223 (S1, 3 s × 5); 5, 10 i 30 s nisu pokrenuti |
+| B-206, B-149 | NOT TESTED | G-sim pritisak na memoriju i „nema povratka“ pod sporim računarom nisu napravljeni |
+| B-78 | delimično (G-sim) | 4 scenarija × 180 s: posle početka 0 praznih bafera; najniža popunjenost decka koji svira 3,97 s (3,51 s pod opterećenjem); 200 pretapanja nije pokrenuto |
+| G-sim, audio-nit | prošlo na G-sim | čuvar: fajl 0, dekoder 0, baza 0 (u B0: 10 / 9.640 / 5); memorija na audio-niti 536–624 B (u B0: 507 KB); brave još postoje (B5) |
+| R, M | NOT TESTED / NOT TESTED – ACCEPTED RISK | – |
+
+Novo ponašanje koje treba znati: na početku emitovanja zvuk kreće tek kad je prva pesma pripremljena do punog bafera (G-sim: 0,87 s; pod opterećenjem 2,43 s tišine).
