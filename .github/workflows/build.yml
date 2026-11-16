@@ -7,7 +7,9 @@ on:
 jobs:
   windows:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -109,6 +111,93 @@ jobs:
       - name: Paket za preuzimanje (radio sa interfejsom, proba)
         shell: pwsh
         run: Copy-Item packaging/proba/* publish/LustreRadio/
+      - name: Trajno izdanje faze A (samo na granama izdanje-*)
+        if: startsWith(github.ref_name, 'izdanje-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $code = 'bcb3eba264e42ae218cd28f92ee81cc0dad877b3'
+          $changed = @(git diff --name-only $code HEAD -- src tests Directory.Build.props Directory.Packages.props LustreRadio.slnx)
+          if ($changed.Count -gt 0) { throw "kod se razlikuje od faze A: $($changed -join ', ')" }
+          Write-Host "Kod programa je isti kao u izmeni $code (grana stabilno-faza-a); razlika je samo u postupku izdanja."
+          Add-Type -Namespace Native -Name Rel -MemberDefinition '[DllImport("kernel32", CharSet = CharSet.Unicode, SetLastError = true)] public static extern IntPtr LoadLibraryW(string path); [DllImport("e_sqlite3", CallingConvention = CallingConvention.Cdecl)] public static extern IntPtr sqlite3_libversion();'
+          [void][Native.Rel]::LoadLibraryW((Resolve-Path publish/LustreRadio/e_sqlite3.dll).Path)
+          $sqlite = [Runtime.InteropServices.Marshal]::PtrToStringAnsi([Native.Rel]::sqlite3_libversion())
+          $text = @(
+            'LUSTRE RADIO - stabilna verzija faze A',
+            'Verzija: 0.1.0, faza A',
+            "Kod programa: izmena $code (grana stabilno-faza-a)",
+            "Izdanje napravljeno iz izmene: $env:GITHUB_SHA (dodat samo postupak izdanja)",
+            'Sema baze: 1',
+            "SQLite: $sqlite",
+            ('Napravljeno: ' + (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm') + ' UTC'),
+            "GitHub Actions: pokretanje $env:GITHUB_RUN_ID"
+          )
+          Set-Content publish/LustreRadio/VERZIJA.txt $text -Encoding utf8
+          Copy-Item packaging/izdanje/POVRATAK.txt publish/LustreRadio/
+          New-Item -ItemType Directory -Force izdanje | Out-Null
+          $zip = 'izdanje/LustreRadio-faza-a-0.1.0.zip'
+          Compress-Archive -Path publish/LustreRadio/* -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash
+          Set-Content "$zip.sha256.txt" "$hash  LustreRadio-faza-a-0.1.0.zip" -Encoding ascii
+          Write-Host "REZULTAT | izdanje | $zip | SHA-256 $hash | $((Get-Item $zip).Length) bajtova"
+          gh release view faza-a-0.1.0 --repo $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host 'Izdanje faza-a-0.1.0 vec postoji; ne pravi se ponovo. Proverava se postojece.'
+            gh release download faza-a-0.1.0 --repo $env:GITHUB_REPOSITORY --pattern '*.sha256.txt' --dir izdanje-staro --clobber
+            Write-Host ('Postojece izdanje: ' + (Get-Content izdanje-staro/*.sha256.txt))
+          } else {
+            $notes = "Stabilna verzija faze A (0.1.0). Kod: izmena $code. Sema baze 1, SQLite $sqlite. Uputstvo za povratak: POVRATAK.txt u ZIP-u. SHA-256: $hash"
+            gh release create faza-a-0.1.0 $zip "$zip.sha256.txt" --repo $env:GITHUB_REPOSITORY --target $env:GITHUB_SHA --title 'LUSTRE RADIO faza A 0.1.0' --notes $notes
+            if ($LASTEXITCODE -ne 0) { throw 'izdanje nije napravljeno' }
+          }
+      - name: Provera izdanja (skidanje nazad, kontrolni zbir, pokretanje iz raspakovanog foldera)
+        if: startsWith(github.ref_name, 'izdanje-')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $dl = Join-Path $env:RUNNER_TEMP 'izdanje-skinuto'
+          gh release download faza-a-0.1.0 --repo $env:GITHUB_REPOSITORY --dir $dl --clobber
+          if ($LASTEXITCODE -ne 0) { throw 'izdanje ne moze da se skine' }
+          $zip = Join-Path $dl 'LustreRadio-faza-a-0.1.0.zip'
+          $expected = ((Get-Content "$zip.sha256.txt") -split '\s+')[0]
+          $actual = (Get-FileHash $zip -Algorithm SHA256).Hash
+          if ($expected -ne $actual) { throw "kontrolni zbir se ne slaze: $expected / $actual" }
+          Write-Host "REZULTAT | skinuto izdanje | SHA-256 se slaze | $actual"
+          $dir = Join-Path $env:RUNNER_TEMP 'LustreRadio-faza-A'
+          Expand-Archive $zip -DestinationPath $dir -Force
+          foreach ($f in 'LustreRadio.Engine.exe', 'LustreRadio.Watchdog.exe', 'LustreRadio.UI.exe', 'POKRENI.cmd', 'ZAUSTAVI.cmd', 'VERZIJA.txt', 'POVRATAK.txt', 'e_sqlite3.dll') {
+            if (-not (Test-Path (Join-Path $dir $f))) { throw "u izdanju nema $f" }
+          }
+          Get-Content (Join-Path $dir 'VERZIJA.txt') | ForEach-Object { Write-Host "   $_" }
+          Get-Process -Name 'LustreRadio.Watchdog', 'LustreRadio.Engine', 'LustreRadio.UI' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          Remove-Item (Join-Path $env:ProgramData 'LustreRadio\stop.flag') -ErrorAction SilentlyContinue
+          $start = Get-Date
+          Start-Process (Join-Path $dir 'LustreRadio.Watchdog.exe')
+          try {
+            $engineExe = Join-Path $dir 'LustreRadio.Engine.exe'
+            $limit = (Get-Date).AddSeconds(60); $engine = $null
+            while (-not $engine -and (Get-Date) -lt $limit) {
+              $engine = Get-Process -Name 'LustreRadio.Engine' -ErrorAction SilentlyContinue | Where-Object { $_.Path -eq $engineExe }
+              Start-Sleep -Milliseconds 500
+            }
+            if (-not $engine) { throw 'Engine iz raspakovanog izdanja se nije pokrenuo' }
+            Start-Sleep 5
+            $logs = Join-Path $env:ProgramData 'LustreRadio\logs'
+            $line = Get-ChildItem (Join-Path $logs 'engine-*.log') | ForEach-Object { Get-Content $_.FullName } |
+              Where-Object { $_ -match '^(\d{4}-\d\d-\d\d \d\d:\d\d:\d\d)' -and [datetime]::ParseExact($Matches[1], 'yyyy-MM-dd HH:mm:ss', $null) -ge $start.AddSeconds(-2) -and $_ -match 'Baza: SQLite' } | Select-Object -Last 1
+            if ($line -notmatch 'sema 1') { throw "u dnevniku nema ocekivanog reda o bazi: $line" }
+            Write-Host "   $line"
+            Write-Host "REZULTAT | izdanje faze A se pokrece iz raspakovanog foldera | Engine $($engine.Id) | PASS"
+          }
+          finally {
+            Start-Process (Join-Path $dir 'LustreRadio.Watchdog.exe') -ArgumentList '--stop' -Wait -ErrorAction SilentlyContinue
+            Get-Process -Name 'LustreRadio.Watchdog', 'LustreRadio.Engine', 'LustreRadio.UI' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+          }
       - uses: actions/upload-artifact@v4
         with:
           name: LustreRadio

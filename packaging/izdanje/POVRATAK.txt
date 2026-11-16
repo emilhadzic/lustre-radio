@@ -1,0 +1,41 @@
+LUSTRE RADIO - POVRATAK NA STABILNU VERZIJU (FAZA A)
+
+Gde je paket
+- GitHub: emilhadzic/lustre-radio -> Releases -> "LUSTRE RADIO faza A 0.1.0"
+  Fajlovi: LustreRadio-faza-a-0.1.0.zip i LustreRadio-faza-a-0.1.0.zip.sha256.txt
+- Druga kopija: sacuvajte ZIP i na svom racunaru i na USB-u.
+
+1. Provera fajla (PowerShell, u folderu gde je ZIP):
+      Get-FileHash .\LustreRadio-faza-a-0.1.0.zip
+   Niz koji se ispise mora biti isti kao u fajlu .sha256.txt.
+
+2. Zaustavite novu verziju: dvoklik na ZAUSTAVI.cmd u folderu NOVE verzije.
+
+3. Raspakujte ZIP faze A u NOV folder (na primer C:\LustreRadio-faza-A).
+   Ne raspakujte ga preko nove verzije.
+
+4. Baza
+   a) Ako nova verzija NIJE nadogradila bazu (u njenom dnevniku pise "sema 1"
+      ili "Baza NIJE nadogradjena"), bazu ne dirajte. Idite na korak 5.
+   b) Ako jeste (u dnevniku pise "sema 2"):
+      - u C:\ProgramData\LustreRadio napravite folder backups\pre-povratka
+        i u njega PREMESTITE lustre.db, lustre.db-wal i lustre.db-shm (ne brisite ih);
+      - iz C:\ProgramData\LustreRadio\backups kopirajte najnoviji fajl
+        pre-sema2-....db kao C:\ProgramData\LustreRadio\lustre.db;
+      - pored vracene baze NE smeju da ostanu stari lustre.db-wal i lustre.db-shm;
+      - folder C:\ProgramData\LustreRadio\journal preimenujte u journal.novo.
+      Nova verzija ima i skriptu VRATI-FAZU-A.cmd koja radi ovaj korak i nista ne brise.
+
+5. Dvoklik na POKRENI.cmd u folderu faze A.
+
+6. Provera da je povratak uspeo
+   - u folderu faze A, fajl VERZIJA.txt kaze "faza A";
+   - u C:\ProgramData\LustreRadio\logs\engine-<datum>.log posle pokretanja pise
+     "Baza: SQLite 3.53.3, sema 1";
+   - nema reda "Baza je iz novije verzije programa";
+   - na ekranu su pesme, PIN i izjava o licenci kao pre; muzika svira.
+
+Sta se gubi: istorija pustanja i izmene podesavanja nastale posle nadogradnje baze.
+
+Ako preskocite korak 4b: faza A odbija bazu porukom "Baza je iz novije verzije
+programa" i ne svira. Nista se ne kvari; uradite korak 4b i pokrenite ponovo.
