@@ -256,6 +256,20 @@ internal static class Db
     public static DateTime ParseUtc(string text) =>
         DateTime.Parse(text, System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind).ToUniversalTime();
 
+    /// <summary>Kolona koja ne postoji u starijoj semi (na primer sema 1 pre nadogradnje) daje null.</summary>
+    public static string? OptionalText(this SqliteDataReader reader, string column)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(reader.GetName(i), column, StringComparison.OrdinalIgnoreCase))
+            {
+                return reader.IsDBNull(i) ? null : reader.GetValue(i).ToString();
+            }
+        }
+
+        return null;
+    }
+
     public static string? Text(this SqliteDataReader reader, string column)
     {
         var ordinal = reader.GetOrdinal(column);

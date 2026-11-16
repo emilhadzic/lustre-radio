@@ -65,7 +65,7 @@ public sealed class BlackBoxTests(ITestOutputHelper output) : IDisposable
         record.Program = "Ččččččččččččččččččččččččč";
         Assert.True(box.TryAppend(ref record));
         Assert.True(box.TryRead(1, out var back));
-        Assert.Equal(new string('Č', JournalRecord.ProgramBytes / 2), back.Program);
+        Assert.Equal("Č" + new string('č', (JournalRecord.ProgramBytes / 2) - 1), back.Program);
     }
 
     [Fact] // B-211 (deo u crnoj kutiji): pisar stoji, 10.500 dogadjaja

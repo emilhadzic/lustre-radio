@@ -17,7 +17,7 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
     private readonly List<string> _log = [];
     private LustreDatabase? _db;
 
-    private LustreDatabase Db => _db ??= LustreDatabase.Open(Path.Combine(_root, "lustre.db"));
+    private LustreDatabase Db => _db ??= LustreDatabase.Open(Path.Combine(Directory.CreateDirectory(_root).FullName, "lustre.db"));
 
     public void Dispose()
     {

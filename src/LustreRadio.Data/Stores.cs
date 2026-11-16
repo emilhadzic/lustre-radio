@@ -410,10 +410,10 @@ public sealed class HistoryStore
             Tier = r.Text("tier"),
             EndedEarly = r.Flag("ended_early"),
             Faulted = r.Flag("faulted"),
-            Status = r.Text("status") ?? "stari_zapis",
-            StopReason = r.Text("stop_reason"),
-            PlaybackId = r.Text("playback_id"),
-            TransitionReached = r.Text("transition_reached") == "1",
+            Status = r.OptionalText("status") ?? "stari_zapis",
+            StopReason = r.OptionalText("stop_reason"),
+            PlaybackId = r.OptionalText("playback_id"),
+            TransitionReached = r.OptionalText("transition_reached") == "1",
         },
         ("$since", Db.Iso(sinceUtc)));
 

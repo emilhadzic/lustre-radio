@@ -43,8 +43,8 @@ public sealed class PlayJournalTests : IDisposable
             Rec(4, JournalKind.Ended) with { PositionMs = 180_000 },
             Rec(5, JournalKind.Stopped) with { Reason = StopReason.Skip, PositionMs = 1200 },
             Rec(6, JournalKind.Discarded) with { Reason = StopReason.NotLoaded },
-            Rec(7, JournalKind.Shutdown) with { PlaybackId = Guid.Empty, Reason = StopReason.Shutdown },
-            Rec(8, JournalKind.ProgramCrash) with { PlaybackId = Guid.Empty, PlaybackIdA = Guid.CreateVersion7(), Frame = DateTime.UtcNow.Ticks },
+            Rec(7, JournalKind.Shutdown) with { PlaybackId = Guid.Empty, Track = 0, Frame = 0, Reason = StopReason.Shutdown },
+            Rec(8, JournalKind.ProgramCrash) with { PlaybackId = Guid.Empty, Track = 0, PlaybackIdA = Guid.CreateVersion7(), Frame = DateTime.UtcNow.Ticks },
             Rec(9, JournalKind.Unconfirmed) with { Unconfirmed = UnconfirmedKind.TailUnknown },
             Rec(10, JournalKind.Lost) with { PlaybackId = Guid.Empty, Track = 300, Frame = DateTime.UtcNow.Ticks },
         };
