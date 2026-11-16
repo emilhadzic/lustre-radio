@@ -61,6 +61,17 @@ public static class SystemCheck
             lines.Add(s.DatabaseMode == RadioState.DatabaseNotUpgraded
                 ? new(Name(T.CheckDatabase), Texts.Format(language, T.CheckDatabaseNotUpgraded, s.DatabaseModeReason ?? "?"), Health.Problem)
                 : new(Name(T.CheckDatabase), ok, Health.Good));
+
+            string When(DateTime? t) => t?.ToString("dd.MM. HH:mm", System.Globalization.CultureInfo.InvariantCulture) ?? "?";
+            lines.Add(s switch
+            {
+                { HistoryNotSaved: true } => new(Name(T.CheckHistory), Texts.Get(language, T.CheckHistoryNotSaved), Health.Problem),
+                { HistoryBlackBoxAvailable: false } => new(Name(T.CheckHistory), Texts.Get(language, T.CheckHistoryNoBlackBox), Health.Problem),
+                { HistoryLost: > 0 } => new(Name(T.CheckHistory), Texts.Format(language, T.CheckHistoryLost, s.HistoryLost, When(s.HistoryLostFromLocal), When(s.HistoryLostToLocal)), Health.Problem),
+                { HistoryLowSpace: true } => new(Name(T.CheckHistory), Texts.Get(language, T.CheckHistoryLowSpace), Health.Attention),
+                { HistoryInvalidLines: > 0 } => new(Name(T.CheckHistory), Texts.Format(language, T.CheckHistoryInvalidLines, s.HistoryInvalidLines), Health.Attention),
+                _ => new(Name(T.CheckHistory), ok, Health.Good),
+            });
         }
 
         lines.Add(probes.AutostartProblems switch

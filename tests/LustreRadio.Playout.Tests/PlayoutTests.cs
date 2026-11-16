@@ -108,7 +108,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
 
         Assert.Equal(0, director.BroadcastableCount);
         Assert.Empty(TestEnvironment.Render(session, 30));
-        Assert.Empty(_env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()));
+        Assert.Empty(_env.Plays(session));
     }
 
     [Fact] // T-LIC-01 kroz ceo lanac
@@ -126,7 +126,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         var audio = TestEnvironment.Render(session, 40);
 
         var allowedIds = verified.Select(hz => _env.TrackOf(hz).Id).ToHashSet();
-        var history = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime());
+        var history = _env.Plays(session);
         Assert.True(history.Count >= 10);
         Assert.All(history, h => Assert.Contains(h.TrackId, allowedIds));
 
@@ -159,7 +159,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         Assert.InRange(audio.Length, 20 * Rate, (20 * Rate) + 1024);
         Assert.True(TestEnvironment.LongestSilenceFrames(audio) <= Rate / 10, "tisina duza od 0,1 s");
 
-        var history = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime());
+        var history = _env.Plays(session);
         Assert.Equal(session.Sequencer.Events.Count, history.Count);
         Assert.Equal(history.Count, started.Count);
         Assert.All(history, h =>
@@ -220,7 +220,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
 
         var audio = TestEnvironment.Render(session, 25);
 
-        var programs = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()).Select(h => h.Program).ToList();
+        var programs = _env.Plays(session).Select(h => h.Program).ToList();
         Assert.Contains("Ponedeljak - jutro", programs);
         Assert.Contains("Ponedeljak - popodne", programs);
         Assert.True(programs.IndexOf("Ponedeljak - popodne") > programs.LastIndexOf("Ponedeljak - jutro"));
@@ -237,7 +237,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         session1.Tick(saveSnapshot: true);
 
         var snapshot = director1.LoadSnapshot()!;
-        var historyBefore = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()).Count;
+        var historyBefore = _env.Plays(session1).Count;
         output.WriteLine($"snimak: pesma {snapshot.TrackId}, pozicija {snapshot.PositionSeconds:F2} s");
         Assert.Equal(2, historyBefore);
         Assert.InRange(snapshot.PositionSeconds, 2.9, 3.1); // druga pesma je krenula na 7 s
@@ -289,7 +289,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         var session = TestEnvironment.Session(director, clock);
         var audio = TestEnvironment.Render(session, 40);
 
-        Assert.DoesNotContain(_env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()), h => h.TrackId == replaced.Id);
+        Assert.DoesNotContain(_env.Plays(session), h => h.TrackId == replaced.Id);
         Assert.True(TestEnvironment.Tone(audio, 2500) < 0.0005, "zamenjeni fajl se cuje");
         Assert.True(TestEnvironment.LongestSilenceFrames(audio) <= Rate / 10);
     }
@@ -309,7 +309,7 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         var audio = TestEnvironment.Render(session, 40);
 
         Assert.True(_env.Db.Tracks.Get(broken.Id)!.FaultCount >= 1);
-        Assert.DoesNotContain(_env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()), h => h.TrackId == broken.Id);
+        Assert.DoesNotContain(_env.Plays(session), h => h.TrackId == broken.Id);
         Assert.InRange(audio.Length, 40 * Rate, (40 * Rate) + 1024);
         Assert.True(TestEnvironment.LongestSilenceFrames(audio) <= Rate / 10);
     }
@@ -319,19 +319,24 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
     {
         var tones = AddTones(10, 3);
         var (director1, clock1) = _env.Director(Monday.AddHours(10));
-        TestEnvironment.Render(TestEnvironment.Session(director1, clock1), 15);
-        var played = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()).Select(h => h.TrackId).ToHashSet();
+        var session1 = TestEnvironment.Session(director1, clock1);
+        TestEnvironment.Render(session1, 15);
+        var played = _env.Plays(session1).Select(h => h.TrackId).ToHashSet();
         Assert.InRange(played.Count, 6, 9);
 
         var (director2, clock2) = _env.Director(Monday.AddHours(10).AddMinutes(30), seed: 5);
         clock2.Frames = () => 0;
         var remaining = tones.Length - played.Count;
+        var picked = new List<long>();
         for (var i = 0; i < remaining; i++)
         {
-            using var next = director2.NextTrack()!.Source;
+            // B2: izbor vise ne upisuje red u bazu (red nastaje tek kad je ishod poznat), pa se izbori broje ovde.
+            var next = director2.NextTrack()!;
+            picked.Add(long.Parse(next.Id, System.Globalization.CultureInfo.InvariantCulture));
+            next.Source.Dispose();
         }
 
-        var all = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()).Select(h => h.TrackId).ToList();
+        var all = played.Concat(picked).ToList();
         Assert.Equal(tones.Length, all.Distinct().Count()); // prvo su odsvirane sve koje jos nisu isle
     }
 
@@ -438,9 +443,10 @@ public sealed class PlayoutTests(ITestOutputHelper output) : IDisposable
         // petak uvece: program trazi deep house, melodic house, modern lounge
         var friday = Monday.AddDays(4).AddHours(19);
         var (director, clock) = _env.Director(friday);
-        var audio = TestEnvironment.Render(TestEnvironment.Session(director, clock), 7);
+        var fridaySession = TestEnvironment.Session(director, clock);
+        var audio = TestEnvironment.Render(fridaySession, 7);
 
-        var played = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime());
+        var played = _env.Plays(fridaySession);
         Assert.Equal(4, played.Count);
         Assert.All(played, p => Assert.Equal("Program", p.Tier));
         Assert.All(played, p => Assert.Equal(["Deep House"], _env.Db.Tracks.Get(p.TrackId)!.Genres));

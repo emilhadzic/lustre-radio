@@ -262,7 +262,7 @@ public sealed class SystemCheckTests
         var lines = SystemCheck.Evaluate(Healthy, LinkStatus.Connected, new LocalProbes { AutostartProblems = [], FreeDiskGb = 80 }, "sr");
 
         Assert.All(lines, l => Assert.Equal(Health.Good, l.Health));
-        Assert.Equal(9, lines.Count); // faza B, B1: dodat red "Baza" (ranije 8 redova)
+        Assert.Equal(10, lines.Count); // faza B: B1 dodat red "Baza", B2 red "Istorija" (ranije 8 redova)
         Assert.Contains(lines, l => l.Detail == "Pesama u biblioteci: 60; sme da se pušta: 50");
         Assert.Contains(lines, l => l.Detail == "Otvoreno do 23:30");
     }
@@ -290,6 +290,27 @@ public sealed class SystemCheckTests
         Assert.Equal(Health.Problem, line.Health);
         Assert.Contains("Baza nije nadograđena", line.Detail, StringComparison.Ordinal);
         Assert.Contains("kopija nije uspela", line.Detail, StringComparison.Ordinal);
+    }
+
+    [Theory] // faza B, B2 (B-38, B-39, B-211, B-225): stanja istorije u "Proveri sistema"
+    [InlineData("ne-cuva", "Istorija se ne čuva na disk", "Problem")]
+    [InlineData("crna-kutija", "Crna kutija nedostupna: pad programa može izbrisati istoriju", "Problem")]
+    [InlineData("izgubljeno", "Istorija izgubljena: 300 događaja od 16.11. 10:00 do 16.11. 11:00", "Problem")]
+    [InlineData("malo-mesta", "Na disku je manje od 200 MB; istorija uskoro neće moći da se čuva", "Attention")]
+    [InlineData("neispravni", "Dnevnik emitovanja ima 2 neispravnih redova (preskočeni)", "Attention")]
+    public void HistoryProblems_AreShownOnTheHistoryLine(string kind, string expected, string health)
+    {
+        var state = kind switch
+        {
+            "ne-cuva" => Healthy with { HistoryNotSaved = true },
+            "crna-kutija" => Healthy with { HistoryBlackBoxAvailable = false },
+            "izgubljeno" => Healthy with { HistoryLost = 300, HistoryLostFromLocal = new DateTime(2026, 11, 16, 10, 0, 0), HistoryLostToLocal = new DateTime(2026, 11, 16, 11, 0, 0) },
+            "malo-mesta" => Healthy with { HistoryLowSpace = true },
+            _ => Healthy with { HistoryInvalidLines = 2 },
+        };
+        var line = SystemCheck.Evaluate(state, LinkStatus.Connected, new LocalProbes { AutostartProblems = [], FreeDiskGb = 80 }, "sr").Single(l => l.Name == "Istorija");
+        Assert.Equal(expected, line.Detail);
+        Assert.Equal(Enum.Parse<Health>(health), line.Health);
     }
 
     [Fact]

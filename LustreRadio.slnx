@@ -27,5 +27,6 @@
     <Project Path="tests/LustreRadio.Presentation.Tests/LustreRadio.Presentation.Tests.csproj" />
     <Project Path="tests/LustreRadio.Architecture.Tests/LustreRadio.Architecture.Tests.csproj" />
     <Project Path="tests/LustreRadio.Sim/LustreRadio.Sim.csproj" />
+    <Project Path="tests/LustreRadio.CrashProbe/LustreRadio.CrashProbe.csproj" />
   </Folder>
 </Solution>

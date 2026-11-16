@@ -10,5 +10,8 @@
   </ItemGroup>
   <ItemGroup>
     <InternalsVisibleTo Include="LustreRadio.Data.Tests" />
+    <InternalsVisibleTo Include="LustreRadio.Playout.Tests" />
+    <!-- kvarovi za testove istorije (B2) se prosledjuju kroz Playout; u programu se ne postavljaju -->
+    <InternalsVisibleTo Include="LustreRadio.Playout" />
   </ItemGroup>
 </Project>

@@ -102,6 +102,7 @@ jobs:
           }
           Write-Host "Pregledano $($ours.Count) nasih fajlova: nema teksta LUSTRE_TEST_, LUSTRE_DATA_ROOT, ALLOW_SESSION0."
           if (Get-ChildItem $pkg -Filter 'LustreRadio.Sim*' -File) { throw 'simulacija (LustreRadio.Sim) ne sme da bude u paketu' }
+          if (Get-ChildItem $pkg -Filter 'LustreRadio.CrashProbe*' -File) { throw 'proba pada (LustreRadio.CrashProbe) ne sme da bude u paketu' }
           Write-Host 'Simulacija (LustreRadio.Sim) nije u paketu.'
           $dll = Join-Path $pkg 'e_sqlite3.dll'
           if (-not (Test-Path $dll)) { throw 'u paketu nema e_sqlite3.dll' }

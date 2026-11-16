@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using LustreRadio.Core.History;
 using LustreRadio.Core.Licensing;
 using LustreRadio.Core.Rotation;
 using Microsoft.Data.Sqlite;
@@ -358,6 +359,15 @@ public sealed record PlayRow
 
     public bool EndedEarly { get; init; }
 
+    /// <summary>Status iz seme 2: odsvirana, prekinuta, nepotvrdjena-a/b/c, stari_zapis. Svaki upit vraca i status (B-162).</summary>
+    public string Status { get; init; } = "stari_zapis";
+
+    public string? StopReason { get; init; }
+
+    public string? PlaybackId { get; init; }
+
+    public bool TransitionReached { get; init; }
+
     public bool Faulted { get; init; }
 }
 
@@ -400,9 +410,67 @@ public sealed class HistoryStore
             Tier = r.Text("tier"),
             EndedEarly = r.Flag("ended_early"),
             Faulted = r.Flag("faulted"),
+            Status = r.Text("status") ?? "stari_zapis",
+            StopReason = r.Text("stop_reason"),
+            PlaybackId = r.Text("playback_id"),
+            TransitionReached = r.Text("transition_reached") == "1",
         },
         ("$since", Db.Iso(sinceUtc)));
+
+    /// <summary>
+    /// Upis konacnog ishoda jednog emitovanja, jednom ("ubaci ili preskoci" po playback_id). Vraca true ako je red upisan.
+    /// </summary>
+    public bool InsertOutcome(PlaybackOutcome outcome)
+    {
+        ArgumentNullException.ThrowIfNull(outcome);
+        var stopped = outcome.Status == PlaybackStatus.Stopped;
+        return _db.Execute(
+            """
+            INSERT INTO play_history (track_id, started_utc, source, part, program, tier, ended_early, faulted,
+                                      playback_id, status, stop_reason, transition_reached, last_rid)
+            VALUES ($track, $started, $source, $part, $program, $tier, $early, $faulted, $pid, $status, $reason, $transition, $rid)
+            ON CONFLICT(playback_id) DO NOTHING
+            """,
+            ("$track", outcome.TrackId), ("$started", Db.Iso(outcome.StartedUtc)),
+            ("$source", Names.Source(outcome.Source)), ("$part", Names.Part(outcome.Part)), ("$program", outcome.Program),
+            ("$tier", Names.Tier(outcome.Tier)), ("$early", stopped ? 1 : 0),
+            ("$faulted", stopped && outcome.Reason == Core.History.StopReason.FileError ? 1 : 0),
+            ("$pid", outcome.PlaybackId.ToString()), ("$status", outcome.StatusText),
+            ("$reason", stopped ? JournalRecord.ReasonName(outcome.Reason) : null),
+            ("$transition", outcome.TransitionReached ? 1 : 0), ("$rid", outcome.LastRid)) == 1;
+    }
+
+    /// <summary>Svi playback_id koji vec imaju red u bazi (za oporavak pri pokretanju).</summary>
+    public HashSet<string> PlaybackIds() =>
+        [.. _db.Query("SELECT playback_id FROM play_history WHERE playback_id IS NOT NULL", r => r.Text("playback_id")!)];
+
+    /// <summary>Broj redova po statusu, odvojeno (B-162, B-168). "Odsvirane" sadrze samo POTVRDJENO – ODSVIRANA.</summary>
+    public HistoryCounts CountByStatus(DateTime fromUtc, DateTime toUtc)
+    {
+        var rows = _db.Query(
+            "SELECT status, count(*) AS n FROM play_history WHERE started_utc >= $from AND started_utc < $to GROUP BY status",
+            r => (Status: r.Text("status") ?? "stari_zapis", Count: r.Long("n")),
+            ("$from", Db.Iso(fromUtc)), ("$to", Db.Iso(toUtc)));
+        return new HistoryCounts(
+            rows.Where(x => x.Status == "odsvirana").Sum(x => x.Count),
+            rows.Where(x => x.Status == "prekinuta").Sum(x => x.Count),
+            rows.Where(x => x.Status.StartsWith("nepotvrdjena", StringComparison.Ordinal)).Sum(x => x.Count),
+            rows.Where(x => x.Status == "stari_zapis").Sum(x => x.Count));
+    }
+
+    /// <summary>Kratki brojevi iz zapisa crne kutije pretvoreni nazad u nazive (izvor, deo dana, nivo).</summary>
+    public static class Names
+    {
+        public static string Source(byte value) => value == 0 ? "nepoznato" : ((Core.Scheduling.ProgramSource)(value - 1)).ToString();
+
+        public static string? Part(byte value) => value == 0 ? null : ((Core.Scheduling.DayPart)(value - 1)).ToString();
+
+        public static string? Tier(byte value) => value == 0 ? null : ((Core.Rotation.MatchTier)(value - 1)).ToString();
+    }
 }
+
+/// <summary>Cetiri odvojena broja; ne sabiraju se osim kad izvestaj to izricito kaze.</summary>
+public sealed record HistoryCounts(long Played, long Stopped, long Unconfirmed, long Legacy);
 
 /// <summary>Jednostavna tabela kljuc-vrednost; slozene vrednosti se cuvaju kao JSON.</summary>
 public sealed class KeyValueStore

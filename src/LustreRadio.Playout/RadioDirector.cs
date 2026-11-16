@@ -1,6 +1,7 @@
 using System.Globalization;
 using LustreRadio.Audio;
 using LustreRadio.Core.Diagnostics;
+using LustreRadio.Core.History;
 using LustreRadio.Core.Loudness;
 using LustreRadio.Core.Rotation;
 using LustreRadio.Core.Scheduling;
@@ -66,9 +67,10 @@ public sealed class RadioDirector
     private bool _cacheShouldPlay;
     private ScheduleDecision? _lastOpenDecision;
 
-    public RadioDirector(LustreDatabase db, IClock clock, AudioFormat format, Random random, DirectorOptions? options = null, Action<string>? log = null)
+    public RadioDirector(LustreDatabase db, IClock clock, AudioFormat format, Random random, DirectorOptions? options = null, Action<string>? log = null, IPlaybackEvents? history = null)
     {
         _db = db ?? throw new ArgumentNullException(nameof(db));
+        History = history;
         _clock = clock ?? throw new ArgumentNullException(nameof(clock));
         _format = format;
         _rotation = new RotationEngine(random);
@@ -85,6 +87,9 @@ public sealed class RadioDirector
     }
 
     public DirectorOptions Options => _options;
+
+    /// <summary>Istorija emitovanja (B2); null u testovima koji je ne proveravaju.</summary>
+    public IPlaybackEvents? History { get; }
 
     /// <summary>Poziva se kad krene nova pesma (sa niti koja priprema zvuk; mora biti brzo).</summary>
     public event Action<NowPlaying>? TrackStarted;
@@ -246,15 +251,9 @@ public sealed class RadioDirector
                 }
 
                 _state.Record(pick.Track, new DateTimeOffset(now));
-                _db.History.Add(new PlayRow
-                {
-                    TrackId = record.Id,
-                    StartedUtc = now.ToUniversalTime(),
-                    Source = decision.Source.ToString(),
-                    Part = decision.Part?.ToString(),
-                    Program = decision.Program.Name,
-                    Tier = pick.Tier.ToString(),
-                });
+                // B2: istorija vise ne ide u bazu odavde; zapis "pripremljena" ide u crnu kutiju, a bazu puni pisar.
+                queued = queued with { PlaybackId = Guid.CreateVersion7() };
+                History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, (byte)((int)pick.Tier + 1), decision.Program.Name);
                 TrackStarted?.Invoke(new NowPlaying(pick.Track.Id, record.Title, record.Artist, decision.Program.Name, decision.Part, Resumed: false, record.DurationSeconds));
                 return queued;
             }
@@ -300,6 +299,8 @@ public sealed class RadioDirector
             var queued = TryOpen(record, snapshot.PositionSeconds);
             if (queued is not null)
             {
+                queued = queued with { PlaybackId = Guid.CreateVersion7() };
+                History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, 0, decision.Program?.Name);
                 TrackStarted?.Invoke(new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds));
             }
 

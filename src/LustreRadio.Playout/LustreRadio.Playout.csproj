@@ -9,4 +9,8 @@
     <ProjectReference Include="..\LustreRadio.Library\LustreRadio.Library.csproj" />
     <ProjectReference Include="..\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LustreRadio.Playout.Tests" />
+    <InternalsVisibleTo Include="LustreRadio.CrashProbe" />
+  </ItemGroup>
 </Project>

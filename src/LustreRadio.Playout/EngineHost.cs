@@ -90,6 +90,9 @@ public sealed class EngineHost : IDisposable, IRadioControl
             _log("UPOZORENJE: provera baze nije prosla.");
         }
 
+        // B2: istorija emitovanja (crna kutija, pisar, dnevnik); oporavak posle pada pre nego sto rotacija procita istoriju.
+        History = PlaybackHistory.Open(options.DataRoot, Database, _log);
+
         var (min, max) = RadioCommandHandler.VolumeRange(Database);
         _volume = Math.Clamp(
             double.TryParse(Database.Settings.Get(VolumeKey), NumberStyles.Float, CultureInfo.InvariantCulture, out var saved) ? saved : max,
@@ -100,6 +103,8 @@ public sealed class EngineHost : IDisposable, IRadioControl
     public const string BackupsFolder = "backups";
 
     public LustreDatabase Database { get; }
+
+    public PlaybackHistory History { get; }
 
     /// <summary>Normal, ili rad bez nadogradnje (baza sema 1 u memoriji; fajl zatvoren; izmene se ne cuvaju).</summary>
     public DatabaseMode DatabaseMode { get; }
@@ -163,7 +168,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
             _log("Zvucni uredjaj trenutno nije dostupan (" + ex.Message + "); radim u 48000 Hz i cekam uredjaj.");
         }
 
-        _director = new RadioDirector(Database, new SystemClock(), _format, new Random(), _options.Director, _log);
+        _director = new RadioDirector(Database, new SystemClock(), _format, new Random(), _options.Director, _log, History);
         if (_options.AlwaysOpen)
         {
             _director.Schedule = AlwaysOpenSchedule(_director.Schedule);
@@ -373,6 +378,13 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 LicenseDeclaredLocal = license?.DeclaredAt.LocalDateTime,
                 DatabaseMode = DatabaseMode == DatabaseMode.Normal ? RadioState.DatabaseNormal : RadioState.DatabaseNotUpgraded,
                 DatabaseModeReason = DatabaseModeReason,
+                HistoryBlackBoxAvailable = History.BlackBoxAvailable,
+                HistoryNotSaved = History.Scribe.JournalFailing,
+                HistoryLost = History.Box.LostCount + History.RecoveryResult.Lost,
+                HistoryLostFromLocal = (History.Box.LostFirstUtc ?? History.RecoveryResult.LostFromUtc)?.ToLocalTime(),
+                HistoryLostToLocal = (History.Box.LostLastUtc ?? History.RecoveryResult.LostToUtc)?.ToLocalTime(),
+                HistoryInvalidLines = History.RecoveryResult.InvalidJournalLines,
+                HistoryLowSpace = History.LowSpace,
             };
         }
     }
@@ -408,6 +420,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
             EndSession("gasenje");
         }
 
+        History.Shutdown();
         Database.Dispose();
         _stop.Dispose();
     }
@@ -543,6 +556,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
         _log("Emitovanje zavrseno: " + reason + ".");
         _output?.Dispose();
         _pump?.Dispose();
+        _session.End(Core.History.StopReason.Closing);
         _output = null;
         _pump = null;
         _session = null;

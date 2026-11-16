@@ -1,9 +1,14 @@
 using LustreRadio.Core.Diagnostics;
+using LustreRadio.Core.History;
 
 namespace LustreRadio.Audio;
 
 /// <summary>Pesma u redu za pustanje: izvor zvuka i njena jacina (iz normalizacije).</summary>
-public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1f);
+public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1f)
+{
+    /// <summary>Jedno emitovanje (plan faze B, 2.2): nov za svaki izbor, nikad se ne koristi ponovo.</summary>
+    public Guid PlaybackId { get; init; }
+}
 
 /// <summary>Zapis o tome sta je i kada pusteno (pozicija u izlaznom toku, u frejmovima).</summary>
 public sealed class TrackEvent
@@ -17,6 +22,13 @@ public sealed class TrackEvent
     public bool EndedEarly { get; set; }
 
     public bool FailedToLoad { get; set; }
+
+    public Guid PlaybackId { get; init; }
+
+    public long TrackNumber { get; init; }
+
+    /// <summary>Dugme Sledeca je pokrenulo prelaz sa ove pesme.</summary>
+    public bool Skipped { get; set; }
 }
 
 /// <summary>
@@ -45,8 +57,11 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private long _outFrames;
     private volatile bool _skipRequested;
 
-    public CrossfadeSequencer(AudioFormat format, Func<QueuedTrack?> nextTrack, double crossfadeSeconds, double initialFadeInSeconds = 0)
+    private readonly IPlaybackEvents? _history;
+
+    public CrossfadeSequencer(AudioFormat format, Func<QueuedTrack?> nextTrack, double crossfadeSeconds, double initialFadeInSeconds = 0, IPlaybackEvents? history = null)
     {
+        _history = history;
         if (format.Channels != 2)
         {
             throw new ArgumentException("Engine radi samo u stereo formatu.", nameof(format));
@@ -107,6 +122,11 @@ public sealed class CrossfadeSequencer : IFrameProvider
                     break;
                 }
 
+                if (_currentEvent is { } started)
+                {
+                    _history?.Started(started.PlaybackId, started.TrackNumber, _outFrames);
+                }
+
                 _pendingFadeIn = 0;
                 _queueEmpty = false;
             }
@@ -120,6 +140,11 @@ public sealed class CrossfadeSequencer : IFrameProvider
                 {
                     var left = _current.RemainingFrames ?? _skipFadeFrames;
                     BeginTransition(Math.Max(1, Math.Min(_skipFadeFrames, left)));
+                    if (_transition && _currentEvent is { } skipped)
+                    {
+                        skipped.Skipped = true;
+                    }
+
                     _queueEmpty = false; // ako sledece nema, obican tok se nastavlja
                 }
             }
@@ -188,12 +213,24 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
         _current.StartFadeOut(fadeFrames);
         _transition = true;
+        if (_incomingEvent is { } b)
+        {
+            if (_currentEvent is { } a)
+            {
+                _history?.Crossfade(b.PlaybackId, b.TrackNumber, a.PlaybackId, a.TrackNumber, _outFrames);
+            }
+            else
+            {
+                _history?.Started(b.PlaybackId, b.TrackNumber, _outFrames);
+            }
+        }
     }
 
     /// <summary>Nova pesma je pukla usred prelaza: ubaci sledecu na isto mesto u krivoj.</summary>
     private void ReplaceIncoming()
     {
         Flag(_incomingEvent, _incoming);
+        Finish(_incomingEvent, _incoming);
         var fadeLength = _current.FadeLength;
         var fadePosition = _current.FadePosition;
         _incoming.Unload();
@@ -202,6 +239,28 @@ public sealed class CrossfadeSequencer : IFrameProvider
             _transition = false;
             _queueEmpty = true;
         }
+        else if (_incomingEvent is { } replacement)
+        {
+            _history?.Started(replacement.PlaybackId, replacement.TrackNumber, _outFrames);
+        }
+    }
+
+    /// <summary>
+    /// Posle zaustavljanja zvuka (gasenje, zatvaranje): pesme koje su jos u deckovima dobijaju PREKINUTO sa razlogom.
+    /// Poziva se kad audio-nit vise ne radi.
+    /// </summary>
+    public void ReportStop(StopReason reason)
+    {
+        foreach (var (e, deck) in new[] { (_currentEvent, _current), (_incomingEvent, _incoming) })
+        {
+            if (e is not null && deck.IsLoaded)
+            {
+                _history?.Stopped(e.PlaybackId, e.TrackNumber, reason, _outFrames, PositionMs(e));
+            }
+        }
+
+        _currentEvent = null;
+        _incomingEvent = null;
     }
 
     private void CompleteTransition()
@@ -216,9 +275,34 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private void CloseCurrent()
     {
         Flag(_currentEvent, _current);
+        Finish(_currentEvent, _current);
         _current.Unload();
         _currentEvent = null;
     }
+
+    /// <summary>Zavrsni zapis: kraj samo ako je pesma odsvirana do poslednjeg uzorka; inace prekinuta sa razlogom.</summary>
+    private void Finish(TrackEvent? trackEvent, Deck deck)
+    {
+        if (trackEvent is null || _history is null)
+        {
+            return;
+        }
+
+        var reason = trackEvent.Skipped ? StopReason.Skip
+            : deck.Faulted ? StopReason.FileError
+            : deck.EndedEarly ? StopReason.UnexpectedEnd
+            : StopReason.None;
+        if (reason == StopReason.None)
+        {
+            _history.Ended(trackEvent.PlaybackId, trackEvent.TrackNumber, _outFrames, PositionMs(trackEvent));
+        }
+        else
+        {
+            _history.Stopped(trackEvent.PlaybackId, trackEvent.TrackNumber, reason, _outFrames, PositionMs(trackEvent));
+        }
+    }
+
+    private int PositionMs(TrackEvent e) => (int)Math.Min(int.MaxValue, (_outFrames - e.StartFrame) * 1000 / Format.SampleRate);
 
     private static void Flag(TrackEvent? trackEvent, Deck deck)
     {
@@ -241,7 +325,13 @@ public sealed class CrossfadeSequencer : IFrameProvider
                 break;
             }
 
-            trackEvent = new TrackEvent { Id = track.Id, StartFrame = _outFrames };
+            trackEvent = new TrackEvent
+            {
+                Id = track.Id,
+                StartFrame = _outFrames,
+                PlaybackId = track.PlaybackId,
+                TrackNumber = long.TryParse(track.Id, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var number) ? number : 0,
+            };
             AudioThreadGuard.Touch(AudioViolation.Lock);
             lock (_events)
             {
@@ -260,6 +350,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             catch (Exception)
             {
                 trackEvent.FailedToLoad = true;
+                _history?.Discarded(trackEvent.PlaybackId, trackEvent.TrackNumber, StopReason.NotLoaded);
                 try
                 {
                     track.Source.Dispose();

@@ -4,6 +4,7 @@ using LustreRadio.Core.Licensing;
 using LustreRadio.Core.Time;
 using LustreRadio.Data;
 using LustreRadio.Playout;
+using Xunit;
 
 namespace LustreRadio.Playout.Tests;
 
@@ -26,6 +27,25 @@ internal sealed class TestEnvironment : IDisposable
         MusicFolder = Path.Combine(_root, "muzika");
         Directory.CreateDirectory(MusicFolder);
         Db = LustreDatabase.Open(Path.Combine(_root, "lustre.db"));
+        History = PlaybackHistory.Open(_root, Db, options: new PlaybackHistoryOptions { StartScribe = false });
+    }
+
+    /// <summary>Istorija emitovanja (B2); pisar ne radi sam, nego ga test pokrece preko <see cref="Plays"/>.</summary>
+    public PlaybackHistory History { get; }
+
+    /// <summary>
+    /// Zavrsava emitovanje (pesme u deckovima dobijaju PREKINUTO – zatvaranje), upisuje sve iz crne kutije i
+    /// vraca istoriju iz baze. Od B2 red u bazi nastaje tek kad je ishod poznat.
+    /// </summary>
+    public IReadOnlyList<PlayRow> Plays(params RadioSession[] sessions)
+    {
+        foreach (var session in sessions)
+        {
+            session.End();
+        }
+
+        Assert.True(History.Scribe.DrainNow(TimeSpan.FromSeconds(10)));
+        return Db.History.GetSince(DateTime.MinValue.ToUniversalTime());
     }
 
     public string MusicFolder { get; }
@@ -90,7 +110,7 @@ internal sealed class TestEnvironment : IDisposable
     public (RadioDirector Director, RenderClock Clock) Director(DateTime startLocal, DirectorOptions? options = null, int seed = 1)
     {
         var clock = new RenderClock(startLocal);
-        var director = new RadioDirector(Db, clock, Format, new Random(seed), options ?? new DirectorOptions { CrossfadeSeconds = 1 });
+        var director = new RadioDirector(Db, clock, Format, new Random(seed), options ?? new DirectorOptions { CrossfadeSeconds = 1 }, history: History);
         return (director, clock);
     }
 
@@ -156,6 +176,7 @@ internal sealed class TestEnvironment : IDisposable
 
     public void Dispose()
     {
+        History.Shutdown();
         Db.Dispose();
         try
         {

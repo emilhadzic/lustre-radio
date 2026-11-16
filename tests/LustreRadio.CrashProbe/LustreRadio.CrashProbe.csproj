@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Proba pada procesa za istoriju (B-221, B-222). Probni program: NE ide u paket za korisnika. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LustreRadio.Core\LustreRadio.Core.csproj" />
+    <ProjectReference Include="..\..\src\LustreRadio.Data\LustreRadio.Data.csproj" />
+    <ProjectReference Include="..\..\src\LustreRadio.Playout\LustreRadio.Playout.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,4 +1,5 @@
 using LustreRadio.Audio;
+using LustreRadio.Core.History;
 
 namespace LustreRadio.Playout;
 
@@ -72,8 +73,11 @@ public sealed class RadioSession
     private double _resumeOffsetSeconds;
     private bool _everPlayed;
 
+    private readonly IPlaybackEvents? _history;
+
     public RadioSession(RadioDirector director, AudioFormat format, PlaybackSnapshot? snapshot = null)
     {
+        _history = director.History;
         _director = director ?? throw new ArgumentNullException(nameof(director));
         _format = format;
         _resume = director.TryResume(snapshot);
@@ -87,7 +91,8 @@ public sealed class RadioSession
             format,
             Next,
             director.Options.CrossfadeSeconds,
-            initialFadeInSeconds: _resume is not null ? director.Options.ResumeFadeInSeconds : 0);
+            initialFadeInSeconds: _resume is not null ? director.Options.ResumeFadeInSeconds : 0,
+            history: _history);
         _fader = new ClosingFader(_sequencer, director.ShouldPlayNow, director.Schedule.FadeOutSeconds);
     }
 
@@ -101,6 +106,20 @@ public sealed class RadioSession
     public bool Ended => _fader.Ended;
 
     public void Skip() => _sequencer.RequestSkip();
+
+    /// <summary>
+    /// Kraj emitovanja (zvuk je vec zaustavljen): pesme u deckovima dobijaju PREKINUTO – zatvaranje,
+    /// a nastavak koji nije stigao da krene se odbacuje.
+    /// </summary>
+    public void End(StopReason reason = StopReason.Closing)
+    {
+        _sequencer.ReportStop(reason);
+        if (_resume is { } resume)
+        {
+            _resume = null;
+            _history?.Discarded(resume.PlaybackId, long.TryParse(resume.Id, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0, StopReason.Shutdown);
+        }
+    }
 
     /// <summary>Periodicno (npr. jednom u sekundi): prijavljuje greske pesama i cuva snimak stanja.</summary>
     public void Tick(bool saveSnapshot)

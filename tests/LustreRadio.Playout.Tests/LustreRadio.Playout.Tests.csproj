@@ -15,6 +15,8 @@
     <ProjectReference Include="..\..\src\LustreRadio.Data\LustreRadio.Data.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Library\LustreRadio.Library.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
+    <!-- Samo redosled build-a: proba pada se pokrece kao poseban proces (B-221, B-222). -->
+    <ProjectReference Include="..\LustreRadio.CrashProbe\LustreRadio.CrashProbe.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <ItemGroup>
     <None Include="..\..\testdata\db\**" Link="db\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />

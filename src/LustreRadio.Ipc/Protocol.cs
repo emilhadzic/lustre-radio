@@ -93,6 +93,25 @@ public sealed record RadioState
     public string DatabaseMode { get; init; } = DatabaseNormal;
 
     public string? DatabaseModeReason { get; init; }
+
+    /// <summary>Istorija (B2): crna kutija je fajl mapiran u memoriju.</summary>
+    public bool HistoryBlackBoxAvailable { get; init; } = true;
+
+    /// <summary>Dnevnik emitovanja trenutno ne moze da se pise.</summary>
+    public bool HistoryNotSaved { get; init; }
+
+    /// <summary>Broj izgubljenih dogadjaja (crna kutija je bila puna), sa vremenom od–do.</summary>
+    public long HistoryLost { get; init; }
+
+    public DateTime? HistoryLostFromLocal { get; init; }
+
+    public DateTime? HistoryLostToLocal { get; init; }
+
+    /// <summary>Neispravni redovi u dnevniku, zateceni pri pokretanju.</summary>
+    public int HistoryInvalidLines { get; init; }
+
+    /// <summary>Na disku dnevnika je manje od 200 MB.</summary>
+    public bool HistoryLowSpace { get; init; }
 }
 
 /// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>
