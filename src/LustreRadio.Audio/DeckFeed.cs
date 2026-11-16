@@ -120,6 +120,9 @@ public sealed class PreparedTrack
 
     public QueuedTrack Track { get; }
 
+    /// <summary>Rucka kartice (D8-3); -1 bez kartice.</summary>
+    public long Ticket { get; internal set; } = -1;
+
     public DeckFeed Feed { get; }
 
     public long TrackNumber { get; }

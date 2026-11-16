@@ -65,9 +65,12 @@ public sealed class RotationState
 
     public string? PreviousTrackId { get; private set; }
 
-    public void Record(TrackInfo track, DateTimeOffset at)
+    /// <summary>Belezi pustanje (ili rezervaciju stavke plana, B4). Vraca podatke za ponistavanje rezervacije.</summary>
+    public RotationReservation Record(TrackInfo track, DateTimeOffset at)
     {
         ArgumentNullException.ThrowIfNull(track);
+        var reservation = new RotationReservation(track.Id, track.Artist, at, LastPlayed(track.Id), LastPlayedArtist(track.Artist), PreviousTrackId,
+            PreviousTrackId is not null && !HasFollowedPrevious(track.Id));
         if (PreviousTrackId is not null)
         {
             if (!_followers.TryGetValue(PreviousTrackId, out var set))
@@ -81,6 +84,49 @@ public sealed class RotationState
         _trackLast[track.Id] = at;
         _artistLast[track.Artist] = at;
         PreviousTrackId = track.Id;
+        return reservation;
+    }
+
+    /// <summary>
+    /// Ponistava rezervaciju odbacene stavke plana (B4: "odbacene stavke bez traga u rotaciji"): vraca prethodne vrednosti
+    /// ako ih u medjuvremenu nista novije nije promenilo.
+    /// </summary>
+    public void Unrecord(RotationReservation r)
+    {
+        ArgumentNullException.ThrowIfNull(r);
+        if (_trackLast.TryGetValue(r.TrackId, out var t) && t == r.At)
+        {
+            if (r.PreviousTrackLast is { } pt)
+            {
+                _trackLast[r.TrackId] = pt;
+            }
+            else
+            {
+                _trackLast.Remove(r.TrackId);
+            }
+        }
+
+        if (_artistLast.TryGetValue(r.Artist, out var a) && a == r.At)
+        {
+            if (r.PreviousArtistLast is { } pa)
+            {
+                _artistLast[r.Artist] = pa;
+            }
+            else
+            {
+                _artistLast.Remove(r.Artist);
+            }
+        }
+
+        if (r.AddedFollower && r.PreviousTrackId is not null && _followers.TryGetValue(r.PreviousTrackId, out var set))
+        {
+            set.Remove(r.TrackId);
+        }
+
+        if (PreviousTrackId == r.TrackId)
+        {
+            PreviousTrackId = r.PreviousTrackId;
+        }
     }
 
     public DateTimeOffset? LastPlayed(string trackId) => _trackLast.TryGetValue(trackId, out var at) ? at : null;
@@ -91,6 +137,9 @@ public sealed class RotationState
     public bool HasFollowedPrevious(string trackId) =>
         PreviousTrackId is not null && _followers.TryGetValue(PreviousTrackId, out var set) && set.Contains(trackId);
 }
+
+/// <summary>Rezervacija u rotaciji (stavka plana); sluzi za ponistavanje kad se stavka odbaci.</summary>
+public sealed record RotationReservation(string TrackId, string Artist, DateTimeOffset At, DateTimeOffset? PreviousTrackLast, DateTimeOffset? PreviousArtistLast, string? PreviousTrackId, bool AddedFollower);
 
 /// <summary>Srodni zanrovi: koriste se kad pesama trazenog zanra nema dovoljno.</summary>
 public static class GenreCompatibility

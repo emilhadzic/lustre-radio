@@ -35,6 +35,9 @@ public sealed class TrackEvent
 
     /// <summary>Dugme Sledeca je pokrenulo prelaz sa ove pesme.</summary>
     public bool Skipped { get; set; }
+
+    /// <summary>Rucka kartice (B4); dogadjaji idu u karticu, a u istoriju ih prepisuje koordinator.</summary>
+    public long Ticket { get; init; } = -1;
 }
 
 /// <summary>
@@ -56,7 +59,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private readonly long _shortestTransition;
     private readonly float[] _scratch = new float[MaxChunkFrames * 2];
     private readonly List<TrackEvent> _events = [];
-    private readonly IPlaybackEvents? _history;
+    private readonly PlayTickets _tickets;
     private readonly long _skipFadeFrames;
 
     private Deck _current = new();
@@ -98,7 +101,8 @@ public sealed class CrossfadeSequencer : IFrameProvider
         _coordinator = coordinator ?? throw new ArgumentNullException(nameof(coordinator));
         _ownsCoordinator = ownsCoordinator;
         _handoff = coordinator.Handoff;
-        _history = history;
+        _tickets = coordinator.Tickets;
+        _ = history; // B4: istoriju pise koordinator iz kartica
         _crossfadeFrames = format.FramesFromSeconds(crossfadeSeconds);
         _recoveryFadeFrames = format.FramesFromSeconds(0.05);
         _shortestTransition = format.FramesFromSeconds(0.5);
@@ -190,7 +194,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
                     break;
                 }
 
-                _history?.Started(_currentEvent!.PlaybackId, _currentEvent.TrackNumber, _outFrames);
+                _tickets.WriteStart(_currentEvent!.Ticket, _outFrames, false, Guid.Empty, 0);
                 _pendingFadeIn = 0;
             }
 
@@ -288,7 +292,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
         {
             if (e is not null && deck.IsLoaded)
             {
-                _history?.Stopped(e.PlaybackId, e.TrackNumber, reason, _outFrames, PositionMs(e));
+                _tickets.WriteOutcome(e.Ticket, _outFrames, reason, PositionMs(e));
             }
         }
 
@@ -378,7 +382,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
         Interlocked.Increment(ref _takeovers);
         if (_currentEvent is { } a)
         {
-            _history?.Stopped(a.PlaybackId, a.TrackNumber, StopReason.DecoderStall, _outFrames + advance, PositionMs(a));
+            _tickets.WriteOutcome(a.Ticket, _outFrames + advance, StopReason.DecoderStall, PositionMs(a));
         }
 
         _currentEvent = null;
@@ -402,11 +406,13 @@ public sealed class CrossfadeSequencer : IFrameProvider
         {
             if (_currentEvent is { } a)
             {
-                _history?.Crossfade(b.PlaybackId, b.TrackNumber, a.PlaybackId, a.TrackNumber, _outFrames);
+                // prvo kartica A (prelaz), pa kartica B (pocetak sa podacima pesme A): ko vidi zastavicu B, vidi i sve pre nje
+                _tickets.WriteTransition(a.Ticket, _outFrames);
+                _tickets.WriteStart(b.Ticket, _outFrames, true, a.PlaybackId, a.TrackNumber);
             }
             else
             {
-                _history?.Started(b.PlaybackId, b.TrackNumber, _outFrames);
+                _tickets.WriteStart(b.Ticket, _outFrames, false, Guid.Empty, 0);
             }
         }
     }
@@ -426,7 +432,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
         }
         else if (_incomingEvent is { } replacement)
         {
-            _history?.Started(replacement.PlaybackId, replacement.TrackNumber, _outFrames);
+            _tickets.WriteStart(replacement.Ticket, _outFrames, false, Guid.Empty, 0);
         }
     }
 
@@ -461,7 +467,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
     /// <summary>Zavrsni zapis: kraj samo ako je pesma odsvirana do poslednjeg uzorka; inace prekinuta sa razlogom.</summary>
     private void Finish(TrackEvent? trackEvent, Deck deck)
     {
-        if (trackEvent is null || _history is null)
+        if (trackEvent is null)
         {
             return;
         }
@@ -472,14 +478,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             : deck.Faulted ? StopReason.FileError
             : deck.EndedEarly ? StopReason.UnexpectedEnd
             : StopReason.None;
-        if (reason == StopReason.None)
-        {
-            _history.Ended(trackEvent.PlaybackId, trackEvent.TrackNumber, _outFrames, PositionMs(trackEvent));
-        }
-        else
-        {
-            _history.Stopped(trackEvent.PlaybackId, trackEvent.TrackNumber, reason, _outFrames, PositionMs(trackEvent));
-        }
+        _tickets.WriteOutcome(trackEvent.Ticket, _outFrames, reason, PositionMs(trackEvent));
     }
 
     private int PositionMs(TrackEvent? e) => e is null ? 0 : (int)Math.Min(int.MaxValue, (_outFrames - e.StartFrame) * 1000 / Format.SampleRate);
@@ -512,6 +511,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             StartFrame = _outFrames,
             PlaybackId = item.Track.PlaybackId,
             TrackNumber = item.TrackNumber,
+            Ticket = item.Ticket,
         };
         AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_events)

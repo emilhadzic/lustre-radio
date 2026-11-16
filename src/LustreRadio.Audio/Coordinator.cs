@@ -24,6 +24,15 @@ public sealed record CoordinatorOptions
 
     /// <summary>Pragovi za zastoje (T, T2, P, D, G); privremeni.</summary>
     public StallOptions Stall { get; init; } = new();
+
+    /// <summary>
+    /// D8-1: pesma sme da krene kad je <c>pripremljena</c> potvrdjena u dnevniku, ili posle ovoliko sekundi
+    /// (ako je bar u crnoj kutiji). 0 = bez cekanja (priprema unapred bez niti: testovi, offline).
+    /// </summary>
+    public double DurableWaitSeconds { get; init; } = 2;
+
+    /// <summary>Koliko cesto se proverava da li stavke plana i dalje smeju (licenca, program).</summary>
+    public double ValidateEverySeconds { get; init; } = 0.5;
 }
 
 /// <summary>Dekodiranje pesme je prestalo pre kraja (slucaj 1 iz plana 2.7): podaci za brojanje i proveru greske.</summary>
@@ -69,10 +78,27 @@ public sealed class Coordinator : IDisposable
         public long Decoded { get; set; }
 
         public bool Filling { get; set; }
+
+        public PlannedItem? Planned { get; set; }
+
+        public long Ticket { get; set; } = -1;
+
+        public long PreparedSeq { get; set; } = -1;
+
+        public long PreparedAt { get; set; } = -1;
     }
 
     private readonly AudioFormat _format;
-    private readonly Func<QueuedTrack?> _next;
+    private readonly IPlanner _planner;
+    private readonly List<PlannedItem> _plan = [];
+    private readonly List<long> _handles = [];
+    private readonly List<TicketEvent> _ticketEvents = [];
+    private readonly List<string> _before = [];
+    private string? _playingId;
+    private string? _planReason;
+    private long _nextValidateAt;
+    private long _nextSelectAt;
+    private volatile PlanSnapshot _planSnapshot = PlanSnapshot.Empty;
     private readonly IPlaybackEvents? _history;
     private readonly Action<string> _log;
     private readonly Slot[] _slots;
@@ -105,9 +131,15 @@ public sealed class Coordinator : IDisposable
     private bool _disposed;
 
     public Coordinator(AudioFormat format, Func<QueuedTrack?> next, CoordinatorOptions? options = null, IPlaybackEvents? history = null, bool threaded = false, Action<string>? log = null)
+        : this(format, new FuncPlanner(next ?? throw new ArgumentNullException(nameof(next))), options, history, threaded, log)
+    {
+    }
+
+    /// <summary>Sa planerom (B4): izbor na niti koordinatora, otvaranje na radnoj niti, plan do 3 stavke.</summary>
+    public Coordinator(AudioFormat format, IPlanner planner, CoordinatorOptions? options = null, IPlaybackEvents? history = null, bool threaded = false, Action<string>? log = null)
     {
         _format = format;
-        _next = next ?? throw new ArgumentNullException(nameof(next));
+        _planner = planner ?? throw new ArgumentNullException(nameof(planner));
         Options = options ?? new CoordinatorOptions();
         _history = history;
         _log = log ?? (_ => { });
@@ -118,6 +150,12 @@ public sealed class Coordinator : IDisposable
         _slots = [new Slot(new DeckFeed(_capacity)), new Slot(new DeckFeed(_capacity))];
         _worker = NewWorker();
     }
+
+    /// <summary>Kartice izmedju niti za mesanje i koordinatora (D8-3).</summary>
+    public PlayTickets Tickets { get; } = new();
+
+    /// <summary>Plan (sledece pesme) za ekran; menja se samo kad se plan promeni.</summary>
+    public PlanSnapshot Plan => _planSnapshot;
 
     /// <summary>Proba diska (u programu: citanje mimo kesa sa istog volumena). Bez nje se nikad ne preskace zbog zastoja.</summary>
     public IDiskProbe? DiskProbe { get; set; }
@@ -207,19 +245,145 @@ public sealed class Coordinator : IDisposable
     public void DiscardPending(StopReason reason)
     {
         StopThread();
+        DetectTakes();
+        EmitTickets();
         foreach (var slot in _slots)
         {
-            if (slot.Item is { } item && slot.State is State.Preparing or State.Published)
+            if (slot.State is State.Preparing or State.Published)
             {
-                if (slot.State == State.Published && !Handoff.Retract(item))
+                if (slot.State == State.Published && slot.Item is { } item && !Handoff.Retract(item))
                 {
-                    continue; // nit za mesanje ju je uzela; za nju zapis pravi sekvencer
+                    continue; // nit za mesanje ju je uzela; za nju zapis pravi kartica
                 }
 
-                _history?.Discarded(item.Track.PlaybackId, item.TrackNumber, reason);
-                slot.State = State.Free;
+                Discard(slot, reason, releaseReservation: false);
             }
         }
+
+        _plan.Clear();
+        PublishPlan();
+    }
+
+    /// <summary>Stavka u decku koja nije krenula: odbacena (zapis samo ako je bila "pripremljena"), deck slobodan.</summary>
+    private void Discard(Slot slot, StopReason reason, bool releaseReservation)
+    {
+        if (slot.Ticket >= 0)
+        {
+            _history?.Discarded(Tickets.PlaybackIdOf(slot.Ticket), Tickets.TrackOf(slot.Ticket), reason);
+            Tickets.MarkWithdrawn(slot.Ticket);
+            Tickets.Release(slot.Ticket);
+            _handles.Remove(slot.Ticket);
+        }
+
+        if (slot.Planned is { } planned)
+        {
+            if (releaseReservation)
+            {
+                _planner.Release(planned);
+            }
+
+            _plan.Remove(planned);
+        }
+
+        if (slot.Source is { } source && !slot.SourceEnded)
+        {
+            _toDispose.Enqueue(source);
+        }
+        else if (slot.Source is { } ended)
+        {
+            _toDispose.Enqueue(ended);
+        }
+
+        slot.Source = null;
+        slot.Item = null;
+        slot.Planned = null;
+        slot.Ticket = -1;
+        slot.PreparedSeq = -1;
+        slot.PreparedAt = -1;
+        slot.Feed.Reset();
+        slot.State = State.Free;
+    }
+
+    private void PublishPlan() => _planSnapshot = new PlanSnapshot([.. _plan], _plan.Count < 3 ? _planReason : null);
+
+    private void DetectTakes()
+    {
+        foreach (var slot in _slots)
+        {
+            if (slot.State == State.Published && !ReferenceEquals(Handoff.Peek(), slot.Item))
+            {
+                slot.State = State.Mixing;
+                _playingId = slot.Planned?.TrackId ?? slot.Item?.Track.Id;
+                if (slot.Planned is { } started)
+                {
+                    _plan.Remove(started);
+                    PublishPlan();
+                }
+
+                TrackStarted?.Invoke(slot.Item!.Track);
+                if (_restartAtBoundary && !_restartRaised)
+                {
+                    _restartRaised = true;
+                    RestartRequested?.Invoke(new RestartRequest(false, "treci zaglavljen poziv dekodera; granica pesama", [.. _stuckTracks]));
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Dogadjaji iz kartica u istoriju (crnu kutiju), u redosledu u kom ih je nit za mesanje upisala. Zapis <c>pretapanje</c>
+    /// nastaje SAMO iz kartice B (u njoj su i podaci pesme A): jedan zapis, jedan rid (D8-2). Kartica se oslobadja tek kad
+    /// je zavrsena i kad su svi njeni dogadjaji prepisani.
+    /// </summary>
+    private bool EmitTickets()
+    {
+        if (_handles.Count == 0)
+        {
+            return false;
+        }
+
+        _ticketEvents.Clear();
+        foreach (var handle in _handles)
+        {
+            Tickets.Collect(handle, _ticketEvents);
+        }
+
+        if (_ticketEvents.Count > 1)
+        {
+            _ticketEvents.Sort(static (a, b) => a.Seq.CompareTo(b.Seq));
+        }
+
+        foreach (var e in _ticketEvents)
+        {
+            switch (e.Kind)
+            {
+                case JournalKind.Started:
+                    _history?.Started(e.PlaybackId, e.Track, e.Frame);
+                    break;
+                case JournalKind.Crossfade:
+                    _history?.Crossfade(e.PlaybackId, e.Track, e.PeerPlaybackId, e.PeerTrack, e.Frame);
+                    break;
+                case JournalKind.Ended:
+                    _history?.Ended(e.PlaybackId, e.Track, e.Frame, e.PositionMs);
+                    break;
+                case JournalKind.Stopped:
+                    _history?.Stopped(e.PlaybackId, e.Track, e.Reason, e.Frame, e.PositionMs);
+                    break;
+            }
+        }
+
+        for (var i = _handles.Count - 1; i >= 0; i--)
+        {
+            var handle = _handles[i];
+            if (Tickets.StateOf(handle) == PlayTickets.Done)
+            {
+                Tickets.Collect(handle, _ticketEvents); // ishod je upisan pre stanja; nista ne ostaje
+                Tickets.Release(handle);
+                _handles.RemoveAt(i);
+            }
+        }
+
+        return _ticketEvents.Count > 0;
     }
 
     public void Dispose()
@@ -294,20 +458,11 @@ public sealed class Coordinator : IDisposable
             progress = true;
         }
 
+        DetectTakes();
+        progress |= EmitTickets();
+        progress |= MaintainPlan(now);
         foreach (var slot in _slots)
         {
-            // nit za mesanje je preuzela objavljenu pesmu
-            if (slot.State == State.Published && !ReferenceEquals(Handoff.Peek(), slot.Item))
-            {
-                slot.State = State.Mixing;
-                TrackStarted?.Invoke(slot.Item!.Track);
-                progress = true;
-                if (_restartAtBoundary && !_restartRaised)
-                {
-                    _restartRaised = true;
-                    RestartRequested?.Invoke(new RestartRequest(false, "treci zaglavljen poziv dekodera; granica pesama", [.. _stuckTracks]));
-                }
-            }
 
             // nit za mesanje je pustila deck: zvuk koji jos stigne za tu pesmu se odbacuje (nova generacija)
             if (slot.State == State.Mixing && slot.Feed.Released)
@@ -324,10 +479,9 @@ public sealed class Coordinator : IDisposable
                 progress = true;
             }
 
-            if (slot.State == State.Preparing && slot.Item is not null && (slot.SourceEnded || slot.Feed.FreeFrames < Options.ChunkFrames) && Handoff.Publish(slot.Item))
+            if (slot.State == State.Preparing && slot.Item is not null && (slot.SourceEnded || slot.Feed.FreeFrames < Options.ChunkFrames))
             {
-                slot.State = State.Published;
-                progress = true;
+                progress |= TryPublish(slot, now);
             }
         }
 
@@ -402,14 +556,19 @@ public sealed class Coordinator : IDisposable
             }
         }
 
-        if (!pending && free is not null && now >= _nextPrepareAt)
+        if (!pending && free is not null && now >= _nextPrepareAt && _plan.Count > 0)
         {
+            var item = _plan[0];
             free.State = State.Preparing;
             free.Item = null;
+            free.Planned = item;
             free.SourceEnded = false;
             free.Decoded = 0;
             free.Filling = false;
-            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, _next), now);
+            free.Ticket = -1;
+            free.PreparedSeq = -1;
+            free.PreparedAt = -1;
+            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, () => _planner.Open(item)), now);
             return true;
         }
 
@@ -439,6 +598,7 @@ public sealed class Coordinator : IDisposable
 
         if (result.Kind == WorkerJobKind.Prepare)
         {
+            var planned = slot.Planned;
             if (result.Track is not { } track)
             {
                 if (result.Error is not null)
@@ -446,19 +606,48 @@ public sealed class Coordinator : IDisposable
                     _log("Priprema pesme nije uspela: " + result.Error.Message);
                 }
 
-                _exhausted = true;
-                _nextPrepareAt = now + _retryFrames;
+                // pesma ne moze da se otvori (fajl nestao, menjan, dekoder): ispada iz plana bez traga u rotaciji
+                if (planned is not null)
+                {
+                    _plan.Remove(planned);
+                    if (_planner is not FuncPlanner)
+                    {
+                        _planner.Release(planned);
+                    }
+
+                    PublishPlan();
+                }
+
+                if (_planner is FuncPlanner)
+                {
+                    _exhausted = true;
+                    _nextPrepareAt = now + _retryFrames;
+                }
+
+                slot.Planned = null;
                 slot.State = State.Free;
                 return;
             }
 
             _exhausted = false;
+            if (_planner is FuncPlanner && planned is not null)
+            {
+                _plan.Remove(planned); // jedna stavka; sledeca se bira posle
+            }
+
             var number = long.TryParse(track.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0;
             if (track.Source.Format != _format)
             {
                 _log("Format izvora se razlikuje od formata engine-a: " + track.Id);
-                _history?.Discarded(track.PlaybackId, number, StopReason.NotLoaded);
                 _toDispose.Enqueue(track.Source);
+                if (planned is not null)
+                {
+                    _plan.Remove(planned);
+                    _planner.Release(planned);
+                    PublishPlan();
+                }
+
+                slot.Planned = null;
                 slot.State = State.Free;
                 return;
             }
@@ -502,6 +691,172 @@ public sealed class Coordinator : IDisposable
                 DecodeFailed?.Invoke(new DecodeFailure(failed.Track, reason, result.Error, slot.Decoded));
             }
         }
+    }
+
+    /// <summary>
+    /// D8-1: pre objave se upisuje <c>pripremljena</c> (dobija karticu); pesma se objavljuje kad je zapis potvrdjen u
+    /// dnevniku ili posle <see cref="CoordinatorOptions.DurableWaitSeconds"/>. Bez slobodne kartice se ceka.
+    /// </summary>
+    private bool TryPublish(Slot slot, long now)
+    {
+        var item = slot.Item!;
+        if (slot.Ticket < 0)
+        {
+            var handle = Tickets.Plan(item.Track.PlaybackId, item.TrackNumber);
+            if (handle < 0)
+            {
+                return false; // svih 16 kartica u upotrebi: koordinator jos nije prepisao zavrsene (B-210)
+            }
+
+            slot.Ticket = handle;
+            item.Ticket = handle;
+            _handles.Add(handle);
+            var p = slot.Planned;
+            slot.PreparedSeq = _history is IDurableEvents durable
+                ? durable.PreparedDurable(item.Track.PlaybackId, item.TrackNumber, p?.Source ?? 0, p?.Part ?? 0, p?.Tier ?? 0, p?.Program)
+                : Prepared(item, p);
+            slot.PreparedAt = now;
+        }
+
+        var allowed = Options.DurableWaitSeconds <= 0
+            || _history is not IDurableEvents
+            || (_history is IDurableEvents d && d.IsConfirmed(slot.PreparedSeq))
+            || now - slot.PreparedAt >= Frames(Options.DurableWaitSeconds);
+        if (!allowed)
+        {
+            return false;
+        }
+
+        Tickets.MarkHanded(slot.Ticket);
+        if (!Handoff.Publish(item))
+        {
+            return false;
+        }
+
+        slot.State = State.Published;
+        return true;
+    }
+
+    private long Prepared(PreparedTrack item, PlannedItem? p)
+    {
+        _history?.Prepared(item.Track.PlaybackId, item.TrackNumber, p?.Source ?? 0, p?.Part ?? 0, p?.Tier ?? 0, p?.Program);
+        return 0;
+    }
+
+    /// <summary>
+    /// Plan (2.8): do 3 stavke, koliko stvarno ima dozvoljenih pesama. Stavka koja vise ne sme (licenca, fajl, drugi program)
+    /// i jos nije krenula se odbacuje bez traga u rotaciji; plan se dopunjava.
+    /// </summary>
+    private bool MaintainPlan(long now)
+    {
+        var changed = false;
+        if (_planner is not FuncPlanner && now >= _nextValidateAt)
+        {
+            _nextValidateAt = now + Frames(Options.ValidateEverySeconds);
+            foreach (var slot in _slots)
+            {
+                if (slot.State is State.Preparing or State.Published && slot.Planned is { } inDeck && !_planner.IsValid(inDeck))
+                {
+                    if (slot.State == State.Published && slot.Item is { } published && !Handoff.Retract(published))
+                    {
+                        continue; // vec preuzeta: svira
+                    }
+
+                    if (_worker.CurrentJob is { } job && job.SlotIndex == Array.IndexOf(_slots, slot))
+                    {
+                        continue; // radna nit jos radi na njoj; odbacuje se u sledecem koraku
+                    }
+
+                    Discard(slot, StopReason.NotLoaded, releaseReservation: true);
+                    changed = true;
+                }
+            }
+
+            for (var i = _plan.Count - 1; i >= 0; i--)
+            {
+                var item = _plan[i];
+                if (!InDeck(item) && !_planner.IsValid(item))
+                {
+                    _plan.RemoveAt(i);
+                    _planner.Release(item);
+                    changed = true;
+                }
+            }
+        }
+
+        var (size, reason) = _planner.Capacity();
+        _planReason = reason;
+        while (_plan.Count < size && now >= _nextSelectAt)
+        {
+            _before.Clear();
+            if (_playingId is not null)
+            {
+                _before.Add(_playingId);
+            }
+
+            foreach (var p in _plan)
+            {
+                _before.Add(p.TrackId);
+            }
+
+            var next = _planner.Select(_before);
+            if (next is null)
+            {
+                _nextSelectAt = now + _retryFrames;
+                if (_plan.Count == 0 && _planner is not FuncPlanner)
+                {
+                    _exhausted = !AnyLoaded();
+                }
+
+                break;
+            }
+
+            if (_planner is not FuncPlanner)
+            {
+                _exhausted = false;
+            }
+
+            _plan.Add(next);
+            changed = true;
+        }
+
+        if (size == 0 && _plan.Count == 0 && _planner is not FuncPlanner)
+        {
+            _exhausted = !AnyLoaded();
+        }
+
+        if (changed)
+        {
+            PublishPlan();
+        }
+
+        return changed;
+    }
+
+    private bool InDeck(PlannedItem item)
+    {
+        foreach (var s in _slots)
+        {
+            if (ReferenceEquals(s.Planned, item))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private bool AnyLoaded()
+    {
+        foreach (var s in _slots)
+        {
+            if (s.State is State.Preparing or State.Published)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private void Submit(WorkerJob job, long now)

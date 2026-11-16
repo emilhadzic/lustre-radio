@@ -35,6 +35,9 @@ public sealed record StaffView
     /// <summary>Program i deo dana; prazno kad ne svira.</summary>
     public required string ProgramLine { get; init; }
 
+    /// <summary>"Sledeca: izvodjac – naslov" iz plana (B4); prazno kad plana nema.</summary>
+    public string NextLine { get; init; } = string.Empty;
+
     /// <summary>Vreme do gasenja; prazno kad ne svira.</summary>
     public required string ClosesLine { get; init; }
 
@@ -87,6 +90,9 @@ public sealed record StaffView
         {
             Title = playing ? NonEmpty(state!.Title, Texts.Get(language, T.NothingPlaying)) : Texts.Get(language, T.NothingPlaying),
             Artist = playing ? NonEmpty(state!.Artist, Texts.Get(language, T.UnknownArtist)) : string.Empty,
+            NextLine = playing && !string.IsNullOrEmpty(state!.NextTitle)
+                ? Texts.Format(language, T.NextUp, string.IsNullOrEmpty(state.NextArtist) ? state.NextTitle! : state.NextArtist + " – " + state.NextTitle)
+                : string.Empty,
             DateLine = Texts.LongDate(language, nowLocal),
             StatusLine = status,
             Health = health,

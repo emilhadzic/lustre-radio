@@ -55,7 +55,7 @@ public sealed record HistoryRecovery
 /// Reditelj i sekvencer javljaju dogadjaje preko <see cref="IPlaybackEvents"/>; svaki poziv samo upisuje zapis
 /// u crnu kutiju. Upis u dnevnik i bazu radi pisar, na svojoj niti.
 /// </summary>
-public sealed class PlaybackHistory : IPlaybackEvents, IDisposable
+public sealed class PlaybackHistory : IDurableEvents, IDisposable
 {
     public const string JournalFolder = "journal";
 
@@ -138,6 +138,14 @@ public sealed class PlaybackHistory : IPlaybackEvents, IDisposable
         var record = new JournalRecord { Kind = JournalKind.Prepared, PlaybackId = playbackId, Track = trackId, Source = source, Part = part, Tier = tier, Program = program, TimeTicks = _utcNow().Ticks };
         Box.TryAppend(ref record);
     }
+
+    public long PreparedDurable(Guid playbackId, long trackId, byte source, byte part, byte tier, string? program)
+    {
+        var record = new JournalRecord { Kind = JournalKind.Prepared, PlaybackId = playbackId, Track = trackId, Source = source, Part = part, Tier = tier, Program = program, TimeTicks = _utcNow().Ticks };
+        return Box.TryAppend(ref record) ? record.Seq : -1;
+    }
+
+    public bool IsConfirmed(long seq) => seq > 0 && Box.Confirmed >= seq;
 
     public void Started(Guid playbackId, long trackId, long frame)
     {

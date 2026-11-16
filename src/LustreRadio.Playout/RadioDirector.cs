@@ -38,6 +38,9 @@ public sealed record PlaybackSnapshot
     public required double PositionSeconds { get; init; }
 
     public required DateTime SavedUtc { get; init; }
+
+    /// <summary>Sledeca pesma iz plana (B4, B-30: posle ponovnog pokretanja ista pesma i ista sledeca).</summary>
+    public string? NextTrackId { get; init; }
 }
 
 public sealed record NowPlaying(string TrackId, string Title, string Artist, string Program, DayPart? Part, bool Resumed, double DurationSeconds = 0);
@@ -46,7 +49,7 @@ public sealed record NowPlaying(string TrackId, string Title, string Artist, str
 /// "Mozak" radija: na osnovu sata i rasporeda odlucuje da li se svira i koja pesma je sledeca.
 /// Svaka pesma prolazi kapiju licenci (kroz katalog) i brzu proveru da fajl nije menjan.
 /// </summary>
-public sealed class RadioDirector
+public sealed class RadioDirector : IPlanner
 {
     public const string ScheduleKey = "schedule";
     public const string SnapshotKey = "snapshot";
@@ -266,9 +269,8 @@ public sealed class RadioDirector
                 }
 
                 _state.Record(pick.Track, new DateTimeOffset(now));
-                // B2: istorija vise ne ide u bazu odavde; zapis "pripremljena" ide u crnu kutiju, a bazu puni pisar.
+                // B4: zapis "pripremljena" pise koordinator (pre objave), ne reditelj.
                 queued = queued with { PlaybackId = Guid.CreateVersion7() };
-                History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, (byte)((int)pick.Tier + 1), decision.Program.Name);
                 // B3: pesma se priprema unapred; "sta svira" se javlja tek kad stvarno krene (NotifyStarted).
                 return queued with { Info = new NowPlaying(pick.Track.Id, record.Title, record.Artist, decision.Program.Name, decision.Part, Resumed: false, record.DurationSeconds) };
             }
@@ -321,7 +323,6 @@ public sealed class RadioDirector
             {
                 queued = queued with { Path = record.Path };
                 queued = queued with { PlaybackId = Guid.CreateVersion7() };
-                History?.Prepared(queued.PlaybackId, record.Id, (byte)((int)decision.Source + 1), decision.Part is { } part ? (byte)((int)part + 1) : (byte)0, 0, decision.Program?.Name);
                 queued = queued with { Info = new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds) };
             }
 
@@ -455,13 +456,181 @@ public sealed class RadioDirector
         }
     }
 
-    public void SaveSnapshot(string trackId, double positionSeconds) =>
+    public void SaveSnapshot(string trackId, double positionSeconds, string? nextTrackId = null) =>
         _db.State.SetJson(SnapshotKey, new PlaybackSnapshot
         {
             TrackId = trackId,
             PositionSeconds = positionSeconds,
             SavedUtc = _clock.NowLocal.ToUniversalTime(),
+            NextTrackId = nextTrackId,
         });
+
+    /// <summary>B-30: posle ponovnog pokretanja prva stavka plana je ista sledeca kao pre (ako i dalje sme).</summary>
+    public string? PreferredNext { get; set; }
+
+    // ---------------- planer (B4): izbor na niti koordinatora, otvaranje na radnoj niti ----------------
+
+    private sealed record PlanTag(TrackRecord Record, RotationReservation Reservation, string? Program, bool Closing);
+
+    public (int Size, string? Reason) Capacity()
+    {
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            var now = _clock.NowLocal;
+            var decision = ScheduleEngine.Evaluate(_schedule, _override, now);
+            if (decision.Program is null && _lastOpenDecision is null)
+            {
+                return (0, "zatvoreno");
+            }
+
+            var nowUtc = now.ToUniversalTime();
+            var allowed = _catalog.Count(t => t.Broadcastable && !t.Blocked && !_unplayable.Contains(t.Id) && !(_quarantine.TryGetValue(t.Id, out var u) && u > nowUtc));
+            if (allowed >= 3)
+            {
+                return (3, null);
+            }
+
+            var reason = allowed == 0 ? "nema-pesama"
+                : _unplayable.Count > 0 || _quarantine.Values.Any(u => u > nowUtc) ? "fajlovi"
+                : "licenca";
+            return (allowed, reason);
+        }
+    }
+
+    public PlannedItem? Select(IReadOnlyList<string> before)
+    {
+        ArgumentNullException.ThrowIfNull(before);
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            var now = _clock.NowLocal;
+            var decision = ScheduleEngine.Evaluate(_schedule, _override, now);
+            var closing = false;
+            if (decision.ShouldPlay)
+            {
+                _lastOpenDecision = decision;
+            }
+            else if (_lastOpenDecision is not null)
+            {
+                decision = _lastOpenDecision; // stisavanje posle zatvaranja: jos pesama iz poslednjeg programa
+                closing = true;
+            }
+
+            if (decision.Program is null)
+            {
+                return null;
+            }
+
+            var nowUtc = now.ToUniversalTime();
+            bool Allowed(TrackInfo t) => t.Broadcastable && !t.Blocked && !_unplayable.Contains(t.Id) && !(_quarantine.TryGetValue(t.Id, out var u) && u > nowUtc);
+            var allowedCount = _catalog.Count(Allowed);
+            var last = before.Count > 0 ? before[^1] : null;
+
+            // razlicite pesme kad ih ima dovoljno; inace bar ne ista dvaput zaredom (osim kad postoji samo jedna)
+            bool Excluded(string id) => allowedCount > before.Count ? before.Contains(id) : allowedCount > 1 && id == last;
+            var available = _catalog.Select(t => !Allowed(t) || Excluded(t.Id) ? t with { Broadcastable = false } : t).ToList();
+
+            TrackInfo? chosen = null;
+            var tier = Core.Rotation.MatchTier.Program;
+            if (PreferredNext is { } preferred)
+            {
+                PreferredNext = null;
+                chosen = available.FirstOrDefault(t => t.Id == preferred && t.Broadcastable);
+            }
+
+            if (chosen is null)
+            {
+                var pick = _rotation.Pick(available, _state, decision.Program, new DateTimeOffset(now), _options.Rotation);
+                if (pick is null)
+                {
+                    return null;
+                }
+
+                chosen = pick.Track;
+                tier = pick.Tier;
+            }
+
+            var record = _records[chosen.Id];
+            var reservation = _state.Record(chosen, new DateTimeOffset(now));
+            return new PlannedItem
+            {
+                TrackId = chosen.Id,
+                Title = record.Title,
+                Artist = record.Artist,
+                Source = (byte)((int)decision.Source + 1),
+                Part = decision.Part is { } part ? (byte)((int)part + 1) : (byte)0,
+                Tier = (byte)((int)tier + 1),
+                Program = decision.Program.Name,
+                Tag = new PlanTag(record, reservation, decision.Program.Name, closing),
+            };
+        }
+    }
+
+    public QueuedTrack? Open(PlannedItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.Tag is not PlanTag tag)
+        {
+            return null;
+        }
+
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            var queued = TryOpen(tag.Record, startSeconds: 0);
+            if (queued is null)
+            {
+                return null;
+            }
+
+            var decision = ScheduleEngine.Evaluate(_schedule, _override, _clock.NowLocal);
+            return queued with
+            {
+                PlaybackId = item.PlaybackId,
+                Path = tag.Record.Path,
+                Info = new NowPlaying(item.TrackId, tag.Record.Title, tag.Record.Artist, tag.Program ?? string.Empty, decision.Part, Resumed: false, tag.Record.DurationSeconds),
+            };
+        }
+    }
+
+    public void Release(PlannedItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        if (item.Tag is PlanTag tag)
+        {
+            AudioThreadGuard.Touch(AudioViolation.Lock);
+            lock (_sync)
+            {
+                _state.Unrecord(tag.Reservation);
+            }
+        }
+    }
+
+    public bool IsValid(PlannedItem item)
+    {
+        ArgumentNullException.ThrowIfNull(item);
+        AudioThreadGuard.Touch(AudioViolation.Lock);
+        lock (_sync)
+        {
+            var now = _clock.NowLocal;
+            var nowUtc = now.ToUniversalTime();
+            var info = _catalog.FirstOrDefault(t => t.Id == item.TrackId);
+            if (info is not { Broadcastable: true, Blocked: false } || _unplayable.Contains(item.TrackId)
+                || (_quarantine.TryGetValue(item.TrackId, out var until) && until > nowUtc))
+            {
+                return false;
+            }
+
+            var decision = ScheduleEngine.Evaluate(_schedule, _override, now);
+            if (!decision.ShouldPlay)
+            {
+                return true; // stisavanje posle zatvaranja: plan iz poslednjeg programa vazi
+            }
+
+            return item.Tag is not PlanTag tag || tag.Closing || decision.Program?.Name == tag.Program;
+        }
+    }
 
     public PlaybackSnapshot? LoadSnapshot() => _db.State.GetJson<PlaybackSnapshot>(SnapshotKey);
 

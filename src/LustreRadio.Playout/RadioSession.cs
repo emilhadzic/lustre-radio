@@ -92,7 +92,9 @@ public sealed class RadioSession
             _resumeOffsetSeconds = snapshot!.PositionSeconds;
         }
 
-        _coordinator = new Coordinator(format, Next, director.Options.Coordinator, _history, threaded: realtime, log);
+        director.PreferredNext = snapshot?.NextTrackId;
+        var options = realtime ? director.Options.Coordinator : director.Options.Coordinator with { DurableWaitSeconds = 0 };
+        _coordinator = new Coordinator(format, new SessionPlanner(this), options, _history, threaded: realtime, log);
         _coordinator.TrackStarted += track => director.NotifyStarted(track.Info);
         _coordinator.DiskProbe = diskProbe;
         _coordinator.ThreadInspector = threadInspector;
@@ -159,7 +161,8 @@ public sealed class RadioSession
 
         if (saveSnapshot && !_fader.Ended && TryGetPosition(out var id, out var position))
         {
-            _director.SaveSnapshot(id, position);
+            var plan = _coordinator.Plan.Items;
+            _director.SaveSnapshot(id, position, plan.Count > 0 ? plan[0].TrackId : null);
         }
     }
 
@@ -179,6 +182,51 @@ public sealed class RadioSession
         }
 
         return true;
+    }
+
+    /// <summary>Plan (sledece pesme) za ekran "Sledeca".</summary>
+    public PlanSnapshot Plan => _coordinator.Plan;
+
+    /// <summary>Planer sesije: prvo nastavak prekinute pesme (ako postoji), zatim reditelj.</summary>
+    private sealed class SessionPlanner(RadioSession session) : IPlanner
+    {
+        private PlannedItem? _resumeItem;
+
+        public (int Size, string? Reason) Capacity() => session._resume is not null ? (Math.Max(1, session._director.Capacity().Size), null) : session._director.Capacity();
+
+        public PlannedItem? Select(IReadOnlyList<string> before)
+        {
+            if (session._resume is { } resume && _resumeItem is null)
+            {
+                _resumeItem = new PlannedItem { TrackId = resume.Id, PlaybackId = resume.PlaybackId, Title = (resume.Info as NowPlaying)?.Title, Artist = (resume.Info as NowPlaying)?.Artist };
+                return _resumeItem;
+            }
+
+            return session._director.Select(before);
+        }
+
+        public QueuedTrack? Open(PlannedItem item)
+        {
+            if (ReferenceEquals(item, _resumeItem) && session._resume is { } resume)
+            {
+                session._resume = null;
+                session._everPlayed = true;
+                return resume;
+            }
+
+            session._everPlayed = true;
+            return session._director.Open(item);
+        }
+
+        public void Release(PlannedItem item)
+        {
+            if (!ReferenceEquals(item, _resumeItem))
+            {
+                session._director.Release(item);
+            }
+        }
+
+        public bool IsValid(PlannedItem item) => ReferenceEquals(item, _resumeItem) || session._director.IsValid(item);
     }
 
     private QueuedTrack? Next()

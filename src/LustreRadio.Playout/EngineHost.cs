@@ -391,6 +391,10 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 HistoryInvalidLines = History.RecoveryResult.InvalidJournalLines,
                 HistoryLowSpace = History.LowSpace,
                 AudioStall = _session?.Coordinator.StallStatus,
+                NextTitle = _session?.Plan.Items is { Count: > 0 } plan ? plan[0].Title : null,
+                NextArtist = _session?.Plan.Items is { Count: > 0 } plan2 ? plan2[0].Artist : null,
+                PlannedCount = _session?.Plan.Items.Count ?? 0,
+                PlanReason = _session?.Plan.ShortReason,
             };
         }
     }

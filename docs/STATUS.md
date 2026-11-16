@@ -456,3 +456,5 @@ Rezultati (G, run 43972374926, 17.11.2026.): build i svi koraci prošli; 684 tes
 | R, M | NOT TESTED / NOT TESTED – ACCEPTED RISK | – |
 
 Novo ponašanje koje treba znati: na početku emitovanja zvuk kreće tek kad je prva pesma pripremljena do punog bafera (G-sim: 0,87 s; pod opterećenjem 2,43 s tišine).
+
+**Odluke vlasnika 17.11.2026. 00:05:** B3 prihvaćen uz otvorene testove; B-196 i B-224 premešteni u B6 (sa probnim Engine-om); svi pragovi ostaju privremeni (T 1 s, N2 1 s, T2 3 s, P 1 s, D 20%, G 50%); odobren B4. Otvoreno (nije PASS): B-195 (mora se izmeriti pouzdano, u posebnom procesu), B-149 i B-206 (G-sim), B-78 sa 200 pretapanja, nedostajući scenariji B-223 (S5, S7, S8, G-sim) i B-120 (P, T i N2 u stvarnom vremenu) pre konačnog usvajanja pragova.

@@ -115,6 +115,16 @@ public sealed record RadioState
 
     /// <summary>Zvuk ceka zbog zastoja (B3): "ceka-disk", "ceka-procesor", "uzrok-nije-utvrdjen"; null kad ne ceka.</summary>
     public string? AudioStall { get; init; }
+
+    /// <summary>Sledeca pesma iz plana (B4); null kad plana nema (nista se ne izmislja).</summary>
+    public string? NextTitle { get; init; }
+
+    public string? NextArtist { get; init; }
+
+    /// <summary>Stvarni broj stavki u planu (0–3) i razlog kad ih je manje od tri.</summary>
+    public int PlannedCount { get; init; }
+
+    public string? PlanReason { get; init; }
 }
 
 /// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>

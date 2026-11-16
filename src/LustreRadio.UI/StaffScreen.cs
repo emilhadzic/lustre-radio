@@ -16,6 +16,7 @@ internal sealed class StaffScreen : Grid
     private readonly TextBlock _date = Theme.Label(string.Empty, 18, Theme.Muted);
     private readonly TextBlock _clock = Theme.Label(string.Empty, 30, Theme.Text, FontWeights.Light);
     private readonly TextBlock _program = Theme.Label(string.Empty, 18, Theme.Gold);
+    private readonly TextBlock _nextLine = Theme.Label(string.Empty, 18, Theme.Muted);
     private readonly TextBlock _title = Theme.Label(string.Empty, 46, Theme.Text, FontWeights.SemiBold);
     private readonly TextBlock _artist = Theme.Label(string.Empty, 26, Theme.Muted);
     private readonly TextBlock _position = Theme.Label(string.Empty, 16, Theme.Muted);
@@ -70,7 +71,9 @@ internal sealed class StaffScreen : Grid
         DockPanel.SetDock(_duration, Dock.Right);
         times.Children.Add(_position);
         times.Children.Add(_duration);
+        _nextLine.Margin = new Thickness(0, 14, 0, 0);
         _nowPlaying.Children.Add(times);
+        _nowPlaying.Children.Add(_nextLine);
         Add(_nowPlaying, 1);
 
         // kontrole
@@ -122,6 +125,8 @@ internal sealed class StaffScreen : Grid
         _date.Text = view.DateLine;
         _clock.Text = Texts.Time(nowLocal);
         _program.Text = view.ProgramLine;
+        _nextLine.Text = view.NextLine;
+        _nextLine.Visibility = string.IsNullOrEmpty(view.NextLine) ? Visibility.Collapsed : Visibility.Visible;
         _title.Text = view.Title;
         _artist.Text = view.Artist;
         _position.Text = view.PositionText;
