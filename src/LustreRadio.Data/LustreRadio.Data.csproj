@@ -8,4 +8,7 @@
   <ItemGroup>
     <PackageReference Include="Microsoft.Data.Sqlite" />
   </ItemGroup>
+  <ItemGroup>
+    <InternalsVisibleTo Include="LustreRadio.Data.Tests" />
+  </ItemGroup>
 </Project>

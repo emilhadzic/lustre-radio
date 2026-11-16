@@ -9,16 +9,17 @@ namespace LustreRadio.Data;
 /// </summary>
 public sealed class LustreDatabase : IDisposable
 {
-    public const int CurrentSchemaVersion = 1;
+    public const int CurrentSchemaVersion = 2;
 
     private readonly SqliteConnection _connection;
     private readonly object _gate = new();
 
-    private LustreDatabase(SqliteConnection connection, bool readOnly, string path)
+    private LustreDatabase(SqliteConnection connection, bool readOnly, string path, bool detachedCopy = false)
     {
         _connection = connection;
         IsReadOnly = readOnly;
         FilePath = path;
+        IsDetachedCopy = detachedCopy;
         Tracks = new TrackStore(this);
         Licenses = new LicenseStore(this);
         History = new HistoryStore(this);
@@ -27,6 +28,12 @@ public sealed class LustreDatabase : IDisposable
     }
 
     public bool IsReadOnly { get; }
+
+    /// <summary>
+    /// Rad bez nadogradnje (plan faze B, 2.3): ovo je kopija baze u memoriji. Fajl baze je zatvoren;
+    /// izmene ostaju samo u memoriji i nestaju pri gasenju.
+    /// </summary>
+    public bool IsDetachedCopy { get; }
 
     public string FilePath { get; }
 
@@ -69,6 +76,8 @@ public sealed class LustreDatabase : IDisposable
                 database.Execute("PRAGMA synchronous=FULL");
                 database.Migrate();
             }
+
+            DatabaseStartup.CountOpened(readOnly);
 
             return database;
         }
@@ -200,6 +209,19 @@ public sealed class LustreDatabase : IDisposable
         return command;
     }
 
+    /// <summary>Kopija baze u memoriji (rad bez nadogradnje). Kopija se dovodi na tekucu semu; fajl se ne dira.</summary>
+    internal static LustreDatabase FromMemoryCopy(SqliteConnection memory, string originalPath)
+    {
+        var database = new LustreDatabase(memory, readOnly: false, originalPath, detachedCopy: true);
+        database.Execute("PRAGMA foreign_keys=ON");
+        if (database.SchemaVersion == 1)
+        {
+            database.InTransaction(() => database.Execute(Schema.Upgrade1To2));
+        }
+
+        return database;
+    }
+
     private void Migrate()
     {
         var version = SchemaVersion;
@@ -208,13 +230,21 @@ public sealed class LustreDatabase : IDisposable
             throw new InvalidOperationException($"Baza je iz novije verzije programa (sema {version}, podrzano do {CurrentSchemaVersion}).");
         }
 
-        if (version < 1)
+        if (version == 0)
         {
+            // nova, prazna baza: odmah tekuca sema (nema sta da se cuva kopijom)
             InTransaction(() =>
             {
                 Execute(Schema.Version1);
-                Execute("PRAGMA user_version=1");
+                Execute(Schema.Upgrade1To2);
             });
+            return;
+        }
+
+        if (version < CurrentSchemaVersion)
+        {
+            // Postojeca baza se nadogradjuje samo kroz DatabaseStartup: kopija, provera, pa nadogradnja.
+            throw new SchemaUpgradeRequiredException(version);
         }
     }
 }

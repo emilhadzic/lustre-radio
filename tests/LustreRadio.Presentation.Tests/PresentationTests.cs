@@ -262,7 +262,7 @@ public sealed class SystemCheckTests
         var lines = SystemCheck.Evaluate(Healthy, LinkStatus.Connected, new LocalProbes { AutostartProblems = [], FreeDiskGb = 80 }, "sr");
 
         Assert.All(lines, l => Assert.Equal(Health.Good, l.Health));
-        Assert.Equal(8, lines.Count);
+        Assert.Equal(9, lines.Count); // faza B, B1: dodat red "Baza" (ranije 8 redova)
         Assert.Contains(lines, l => l.Detail == "Pesama u biblioteci: 60; sme da se pušta: 50");
         Assert.Contains(lines, l => l.Detail == "Otvoreno do 23:30");
     }
@@ -279,6 +279,17 @@ public sealed class SystemCheckTests
         Assert.Equal(Health.Attention, lines.Single(l => l.Name == "Running mode").Health);
         Assert.Equal("Setting is wrong: Priority", lines.Single(l => l.Name == "Automatic start").Detail);
         Assert.Equal("Low space: 1.5 GB", lines.Single(l => l.Name == "Free disk space").Detail);
+    }
+
+    [Fact] // faza B, B1: rad bez nadogradnje se vidi kao problem, sa razlogom
+    public void DatabaseNotUpgraded_IsShownAsProblem_WithReason()
+    {
+        var state = Healthy with { DatabaseMode = RadioState.DatabaseNotUpgraded, DatabaseModeReason = "kopija nije uspela" };
+        var lines = SystemCheck.Evaluate(state, LinkStatus.Connected, new LocalProbes { AutostartProblems = [], FreeDiskGb = 80 }, "sr");
+        var line = lines.Single(l => l.Name == "Baza");
+        Assert.Equal(Health.Problem, line.Health);
+        Assert.Contains("Baza nije nadograđena", line.Detail, StringComparison.Ordinal);
+        Assert.Contains("kopija nije uspela", line.Detail, StringComparison.Ordinal);
     }
 
     [Fact]

@@ -43,6 +43,11 @@ public sealed class RadioCommandHandler : IIpcHandler
 
     private static readonly HashSet<string> AdminCommands = ["rescan", "set-music-folders", "set-volume-range", "logout", "set-language", "touch", "declare-collective-license"];
 
+    /// <summary>Komande koje menjaju bazu: dok baza nije nadogradjena, odbijaju se (plan faze B, 2.3).</summary>
+    public static readonly IReadOnlySet<string> BlockedWithoutUpgrade = new HashSet<string> { "rescan", "set-music-folders", "set-volume-range", "set-language", "declare-collective-license", "set-pin" };
+
+    public const string DatabaseNotUpgradedError = "db-not-upgraded";
+
     private readonly IRadioControl _radio;
     private readonly LustreDatabase _db;
     private readonly AdminSessions _sessions;
@@ -115,6 +120,11 @@ public sealed class RadioCommandHandler : IIpcHandler
         if (AdminCommands.Contains(name) && !_sessions.Validate(command.Session))
         {
             return IpcMessage.Failure(command.Id, "admin-required");
+        }
+
+        if (_db.IsDetachedCopy && BlockedWithoutUpgrade.Contains(name))
+        {
+            return IpcMessage.Failure(command.Id, DatabaseNotUpgradedError);
         }
 
         switch (name)

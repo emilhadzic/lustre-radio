@@ -74,8 +74,17 @@ public sealed class EngineHost : IDisposable, IRadioControl
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _log = options.Log ?? (_ => { });
         Directory.CreateDirectory(options.DataRoot);
-        Database = LustreDatabase.Open(Path.Combine(options.DataRoot, Core.AppPaths.DatabaseFileName));
-        _log($"Baza: SQLite {Database.SqliteVersion}, sema {Database.SchemaVersion}");
+        // Faza B, korak B1: sema 1 se nadogradjuje tek posle proverene kopije; ako to ne uspe, rad bez nadogradnje.
+        var startup = DatabaseStartup.Open(
+            Path.Combine(options.DataRoot, Core.AppPaths.DatabaseFileName),
+            Path.Combine(options.DataRoot, BackupsFolder),
+            _log);
+        Database = startup.Database;
+        DatabaseMode = startup.Mode;
+        DatabaseModeReason = startup.Reason;
+        _log(DatabaseMode == DatabaseMode.Normal
+            ? $"Baza: SQLite {Database.SqliteVersion}, sema {Database.SchemaVersion}"
+            : $"Baza: SQLite {Database.SqliteVersion}, sema 1 (NIJE nadogradjena; rad bez nadogradnje, kopija u memoriji): {DatabaseModeReason}");
         if (!Database.QuickCheck())
         {
             _log("UPOZORENJE: provera baze nije prosla.");
@@ -88,7 +97,14 @@ public sealed class EngineHost : IDisposable, IRadioControl
             max);
     }
 
+    public const string BackupsFolder = "backups";
+
     public LustreDatabase Database { get; }
+
+    /// <summary>Normal, ili rad bez nadogradnje (baza sema 1 u memoriji; fajl zatvoren; izmene se ne cuvaju).</summary>
+    public DatabaseMode DatabaseMode { get; }
+
+    public string? DatabaseModeReason { get; }
 
     public event Action<NowPlaying>? TrackStarted;
 
@@ -108,6 +124,12 @@ public sealed class EngineHost : IDisposable, IRadioControl
         if (_options.SafeMode)
         {
             _log("Sigurni rezim: skeniranje biblioteke je preskoceno.");
+            return;
+        }
+
+        if (DatabaseMode == DatabaseMode.NotUpgraded)
+        {
+            _log("Baza nije nadogradjena: skeniranje biblioteke je iskljuceno.");
             return;
         }
 
@@ -349,6 +371,8 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 EngineVersion = typeof(EngineHost).Assembly.GetName().Version?.ToString(3),
                 LicenseOrganizations = license?.Organizations,
                 LicenseDeclaredLocal = license?.DeclaredAt.LocalDateTime,
+                DatabaseMode = DatabaseMode == DatabaseMode.Normal ? RadioState.DatabaseNormal : RadioState.DatabaseNotUpgraded,
+                DatabaseModeReason = DatabaseModeReason,
             };
         }
     }

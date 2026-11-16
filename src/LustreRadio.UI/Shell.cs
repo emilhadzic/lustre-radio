@@ -257,7 +257,7 @@ internal sealed class Shell : Grid
                 else
                 {
                     _newPin = new NewPinFlow();
-                    _pin.Show(language, T.PinSetNew, Texts.Get(language, T.CommandFailed));
+                    _pin.Show(language, T.PinSetNew, Texts.Get(language, set?.Error == "db-not-upgraded" ? T.DatabaseNotUpgradedBlocked : T.CommandFailed));
                 }
 
                 break;

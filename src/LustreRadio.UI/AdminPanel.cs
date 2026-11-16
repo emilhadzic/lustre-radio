@@ -434,6 +434,10 @@ internal sealed class AdminPanel : Grid
         {
             _lock(T.SessionExpired);
         }
+        else if (response?.Error == "db-not-upgraded")
+        {
+            _message.Text = Texts.Get(language, T.DatabaseNotUpgradedBlocked);
+        }
         else if (response?.Error == "folder-not-found")
         {
             _message.Text = Texts.Format(language, T.FolderNotFound, response.Data?.GetValueOrDefault("folder") ?? string.Empty);

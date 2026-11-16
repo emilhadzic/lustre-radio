@@ -367,13 +367,17 @@ public sealed class HistoryStore
 
     internal HistoryStore(LustreDatabase db) => _db = db;
 
+    /// <summary>
+    /// Upis po starom nacinu (u trenutku pocetka, bez pouzdanog ishoda). Do koraka B2 status je "stari_zapis";
+    /// u B2 istoriju preuzima dnevnik emitovanja.
+    /// </summary>
     public long Add(PlayRow play)
     {
         ArgumentNullException.ThrowIfNull(play);
         return _db.Scalar<long>(
             """
-            INSERT INTO play_history (track_id, started_utc, source, part, program, tier, ended_early, faulted)
-            VALUES ($track, $started, $source, $part, $program, $tier, $early, $faulted) RETURNING id
+            INSERT INTO play_history (track_id, started_utc, source, part, program, tier, ended_early, faulted, status)
+            VALUES ($track, $started, $source, $part, $program, $tier, $early, $faulted, 'stari_zapis') RETURNING id
             """,
             ("$track", play.TrackId), ("$started", Db.Iso(play.StartedUtc)), ("$source", play.Source), ("$part", play.Part),
             ("$program", play.Program), ("$tier", play.Tier), ("$early", play.EndedEarly ? 1 : 0), ("$faulted", play.Faulted ? 1 : 0));

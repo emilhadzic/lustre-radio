@@ -333,10 +333,12 @@ public sealed class DatabaseTests : IDisposable
         var source = Path.Combine(AppContext.BaseDirectory, "db", "sema1-sqlite-3.46.1.db");
         File.Copy(source, _path);
 
-        using (var db = LustreDatabase.Open(_path))
+        // Izmena u fazi B (korak B1): baza seme 1 se otvara kroz proveren postupak i nadogradjuje na semu 2.
+        // Ranije je ovaj test ocekivao semu 1. Podaci i upis se proveravaju isto kao pre.
+        using (var db = DatabaseStartup.Open(_path, Path.Combine(_directory, "backups")).Database)
         {
             Assert.True(db.QuickCheck());
-            Assert.Equal(1, db.SchemaVersion);
+            Assert.Equal(2, db.SchemaVersion);
 
             var tracks = db.Tracks.GetAll();
             Assert.Equal(5, tracks.Count);

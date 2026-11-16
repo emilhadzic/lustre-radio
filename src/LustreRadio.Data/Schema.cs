@@ -88,4 +88,19 @@ internal static class Schema
             value TEXT NOT NULL
         );
         """;
+
+    /// <summary>
+    /// Sema 2 (faza B, plan v8, odluke N4 i D7-2): pet kolona u istoriji emitovanja.
+    /// Postojeci redovi dobijaju status "stari_zapis" i prazan playback_id.
+    /// </summary>
+    public const string Upgrade1To2 = """
+        ALTER TABLE play_history ADD COLUMN playback_id TEXT;
+        ALTER TABLE play_history ADD COLUMN status TEXT;
+        ALTER TABLE play_history ADD COLUMN stop_reason TEXT;
+        ALTER TABLE play_history ADD COLUMN transition_reached INTEGER;
+        ALTER TABLE play_history ADD COLUMN last_rid TEXT;
+        CREATE UNIQUE INDEX ux_history_playback ON play_history(playback_id);
+        UPDATE play_history SET status = 'stari_zapis';
+        PRAGMA user_version=2;
+        """;
 }

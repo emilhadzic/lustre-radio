@@ -157,3 +157,16 @@ jobs:
         with:
           name: G-sim
           path: sim-rezultati
+
+  merenje-gc-r2r:
+    # Provera odstupanja od specifikacije 3.4 (G). Samo merenje; podesavanja programa se ne menjaju.
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+      - name: GC i ReadyToRun, tri varijante
+        shell: pwsh
+        run: ./tests/integration/gc-r2r.ps1

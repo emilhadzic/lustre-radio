@@ -84,6 +84,15 @@ public sealed record RadioState
     public string? LicenseOrganizations { get; init; }
 
     public DateTime? LicenseDeclaredLocal { get; init; }
+
+    public const string DatabaseNormal = "normal";
+
+    public const string DatabaseNotUpgraded = "bez-nadogradnje";
+
+    /// <summary>"normal" ili "bez-nadogradnje" (baza nije nadogradjena; izmene su iskljucene).</summary>
+    public string DatabaseMode { get; init; } = DatabaseNormal;
+
+    public string? DatabaseModeReason { get; init; }
 }
 
 /// <summary>Jedna poruka izmedju interfejsa i audio procesa.</summary>

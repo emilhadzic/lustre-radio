@@ -57,6 +57,10 @@ public static class SystemCheck
             lines.Add(s.SafeMode
                 ? new(Name(T.CheckSafeMode), Texts.Get(language, T.CheckSafeModeOn), Health.Attention)
                 : new(Name(T.CheckSafeMode), ok, Health.Good));
+
+            lines.Add(s.DatabaseMode == RadioState.DatabaseNotUpgraded
+                ? new(Name(T.CheckDatabase), Texts.Format(language, T.CheckDatabaseNotUpgraded, s.DatabaseModeReason ?? "?"), Health.Problem)
+                : new(Name(T.CheckDatabase), ok, Health.Good));
         }
 
         lines.Add(probes.AutostartProblems switch

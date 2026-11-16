@@ -16,4 +16,7 @@
     <ProjectReference Include="..\..\src\LustreRadio.Library\LustreRadio.Library.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="..\..\testdata\db\**" Link="db\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
 </Project>
