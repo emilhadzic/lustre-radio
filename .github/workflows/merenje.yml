@@ -1,0 +1,22 @@
+name: kolektor-merenje
+
+on:
+  push:
+    branches: [kolektor-merenje]
+  workflow_dispatch:
+
+jobs:
+  merenje:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - name: Merenje kataloga (bez preuzimanja muzike)
+        run: python3 merenje/merenje.py
+        env:
+          OUT: izlaz
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: merenje-izlaz
+          path: izlaz/
