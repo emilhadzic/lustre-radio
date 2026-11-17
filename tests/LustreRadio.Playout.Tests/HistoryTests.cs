@@ -142,6 +142,126 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
         Assert.Equal("Morning", Rows().First(r => r.Status == "odsvirana").Part);
     }
 
+    [Fact] // B-208: tabela konacnog statusa iz plana 2.2, svih 11 redova; status, podvrsta i prelaz_dostignut za A i za B
+    public void B208_FinalStatusTable_AllElevenRows()
+    {
+        var h = Open();
+        var expected = new List<(string Row, Guid Pid, string Status, string? Reason, bool Transition)>();
+        var track = 100L;
+
+        Guid Begin()
+        {
+            var pid = Guid.CreateVersion7();
+            h.Prepared(pid, ++track, 1, 1, 1, null);
+            h.Started(pid, track, 0);
+            return pid;
+        }
+
+        (Guid A, long TA, Guid B, long TB) Fade()
+        {
+            var a = Begin();
+            var ta = track;
+            var b = Guid.CreateVersion7();
+            h.Prepared(b, ++track, 1, 1, 1, null);
+            h.Crossfade(b, track, a, ta, 1000);
+            return (a, ta, b, track);
+        }
+
+        // 1 i 2: pretapanje pa rep do kraja (2: B preuzme, A se ipak normalno zavrsi – isti zapisi)
+        foreach (var row in new[] { "1", "2" })
+        {
+            var (a, ta, b, tb) = Fade();
+            h.Ended(a, ta, 2000, 2000);
+            h.Ended(b, tb, 3000, 3000);
+            expected.Add((row + " A", a, "odsvirana", null, true));
+            expected.Add((row + " B", b, "odsvirana", null, false));
+        }
+
+        // 3: dekoder pesme A prestane tokom repa
+        {
+            var (a, ta, b, tb) = Fade();
+            h.Stopped(a, ta, StopReason.DecoderStall, 1500, 1500);
+            h.Ended(b, tb, 3000, 3000);
+            expected.Add(("3 A", a, "prekinuta", JournalRecord.ReasonName(StopReason.DecoderStall), true));
+            expected.Add(("3 B", b, "odsvirana", null, false));
+        }
+
+        // 4: Sledeca tokom repa (stisavaju se obe)
+        {
+            var (a, ta, b, tb) = Fade();
+            h.Stopped(a, ta, StopReason.Skip, 1500, 1500);
+            h.Stopped(b, tb, StopReason.Skip, 500, 500);
+            expected.Add(("4 A", a, "prekinuta", JournalRecord.ReasonName(StopReason.Skip), true));
+            expected.Add(("4 B", b, "prekinuta", JournalRecord.ReasonName(StopReason.Skip), false));
+        }
+
+        // 7: pesma bez sledece zavrsi
+        var p7 = Begin();
+        h.Ended(p7, track, 2000, 2000);
+        expected.Add(("7", p7, "odsvirana", null, false));
+
+        // 9: Sledeca pre tacke prelaza
+        var p9 = Begin();
+        h.Stopped(p9, track, StopReason.Skip, 500, 500);
+        expected.Add(("9", p9, "prekinuta", JournalRecord.ReasonName(StopReason.Skip), false));
+
+        // 10: dekodiranje prestane pre tacke prelaza (tri vrste)
+        foreach (var reason in new[] { StopReason.FileError, StopReason.FileUnavailable, StopReason.UnexpectedEnd })
+        {
+            var p = Begin();
+            h.Stopped(p, track, reason, 500, 500);
+            expected.Add(("10 " + reason, p, "prekinuta", JournalRecord.ReasonName(reason), false));
+        }
+
+        // 11: stisavanje pri zatvaranju; prelaz_dostignut po stanju (bez pretapanja i tokom repa)
+        var p11 = Begin();
+        h.Stopped(p11, track, StopReason.Closing, 500, 500);
+        expected.Add(("11", p11, "prekinuta", JournalRecord.ReasonName(StopReason.Closing), false));
+        {
+            var (a, ta, b, tb) = Fade();
+            h.Stopped(a, ta, StopReason.Closing, 1500, 1500);
+            h.Stopped(b, tb, StopReason.Closing, 500, 500);
+            expected.Add(("11 rep A", a, "prekinuta", JournalRecord.ReasonName(StopReason.Closing), true));
+            expected.Add(("11 rep B", b, "prekinuta", JournalRecord.ReasonName(StopReason.Closing), false));
+        }
+
+        // 5: pad tokom repa (pretapanje potvrdjeno, bez zavrsnog)
+        {
+            var (a, _, b, _) = Fade();
+            expected.Add(("5 A", a, "nepotvrdjena-c", null, true));
+            expected.Add(("5 B", b, "nepotvrdjena-b", null, false));
+        }
+
+        // 6: pad posle pocetka pretapanja, pre nego sto je zapis pretapanje upisan
+        {
+            var a = Begin();
+            var b = Guid.CreateVersion7();
+            h.Prepared(b, ++track, 1, 1, 1, null);
+            expected.Add(("6 A", a, "nepotvrdjena-b", null, false));
+            expected.Add(("6 B", b, "nepotvrdjena-a", null, false));
+        }
+
+        // 8: pesma bez sledece zavrsila, pad pre nego sto je kraj upisan
+        var p8 = Begin();
+        expected.Add(("8", p8, "nepotvrdjena-b", null, false));
+
+        Assert.True(h.Scribe.DrainNow(TimeSpan.FromSeconds(30)));
+        h.Abandon(); // pad procesa
+        using var again = Open();
+        var rows = Rows();
+        foreach (var (row, pid, status, reason, transition) in expected)
+        {
+            var r = Row(pid);
+            output.WriteLine($"red {row}: {r.Status} {r.StopReason} prelaz={r.TransitionReached}");
+            Assert.True(status == r.Status, $"red {row}: ocekivano {status}, dobijeno {r.Status}");
+            Assert.True(reason == r.StopReason, $"red {row}: razlog {reason} / {r.StopReason}");
+            Assert.True(transition == r.TransitionReached, $"red {row}: prelaz_dostignut {transition} / {r.TransitionReached}");
+        }
+
+        Assert.Equal(expected.Count, rows.Count(r => r.PlaybackId is not null));
+        Assert.Equal(rows.Count, rows.Select(r => r.PlaybackId).Distinct().Count());
+    }
+
     [Fact] // B-160 kroz pravi radio: kraj, Sledeca, zatvaranje, pretapanje
     public void B160_ThroughTheRealRadio_EndedSkipAndClosing()
     {
