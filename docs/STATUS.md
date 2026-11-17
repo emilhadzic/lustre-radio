@@ -558,3 +558,24 @@ Run 44094647238: sva tri posla zelena; 727 prošlo, 0 palo, 4 preskočena.
 | Mini PC | M | NOT TESTED – ACCEPTED RISK |
 
 Nije urađeno (spec. 5.2 dozvoljava): usklađivanje energije (signal 3, standardna kriva) i procena vokala (signal 4, težina 0).
+
+**Odluke vlasnika 17.11.2026. 16:39:** slušni test Smart-a odložen (Smart privremeno prihvaćen kao tehnički prolazan na osnovu automatskih provera; slušno NEPROVERENO). Nastaviti bez čekanja slušnih potvrda između koraka: DJ Mix, poređenje ElevenLabs/Azure bez troškova, završna integracija (noćna kopija, nadogradnja, zaštitni zid, srpsko uputstvo). Program se ne proglašava spremnim za lokal pre završnog slušanja i provere na mini PC-ju.
+
+## FINAL, koraci 2–4 (grana `final-smart`, 17.11.2026.)
+
+Run 44133321272 (posao windows): zeleno; 767 prošlo, 0 palo, 4 preskočena (isti kao ranije).
+
+| Korak | Šta | Provera | Rezultat |
+|---|---|---|---|
+| 2 DJ Mix | analiza tempa i mreže udaraca u istom prolazu kao glasnoća; DJ prelaz uživo samo za dve pesme stabilnog tempa sa razlikom do 0,3 %; pesma B ulazi tako da njen prvi udarac padne na udarac pesme A na granici fraze (16, inače 4 udarca); sve ostalo Smart; pripremljeni prelazi odloženi | klik-trake 84/97,3/120/128 BPM: tempo ±0,1 %, prvi udarac ±10 ms; tempo koji klizi i „svirano uživo“ nisu stabilni; pravi radio: 120,0 i 120,2 BPM → DJ prelaz, udarci poravnati 0,7 ms; 120/125 i nestabilne pesme → bez DJ-a | PASS (G); slušno NEPROVERENO |
+| 3 Najave | Admin → Najave: ručni uvoz fajla, tekst, vrsta, jezik, glas, licenca (servis, model i glas, plan, dokaz plaćanja, datum, snimak uslova); odobravanje samo uz potpunu licencu; uključi/isključi/arhiva; emitovanje između pesama (Break: pesma se završi prirodno), 1,5 LU iznad muzike, po postojećim pravilima VoiceScheduler-a; najava ne ulazi u istoriju pesama | pravi radio: odobrena najava ide posle celog kraja pesme, posle nje kreće pesma, nema reda u istoriji pesama; bez potpune licence ne može da se odobri i nikad ne ide u eter | PASS (G) |
+| 3 Poređenje glasova | `docs/GLAS_PROBA.md`: iste 4 rečenice SR/EN, postupak bez troškova (ElevenLabs Free, Azure F0) | slušna proba | NEPROVERENO (odloženo) |
+| 3 Generisanje iz programa (API) | nije urađeno; zavisi od izbora servisa | – | – |
+| 4 Noćna kopija baze | posle 03:30 (ili kad se računar upali), Online Backup API, provera ispravnosti, jedan samostalan fajl, čuva se 14 | 20 noći: svaka kopija ispravna i sadrži podatke, jednom dnevno, ostaje 14 | PASS (G) |
+| 4 Nadogradnja | INSTALIRAJ preko postojeće instalacije | baza ostaje (ne manja), dnevnik emitovanja nepromenjen, muzika van programa nepromenjena | PASS (G) |
+| 4 Zaštitni zid | `ZASTITNI-ZID.cmd` (jednom, traži administratorsku dozvolu): Engine i Watchdog blokirani ulaz/izlaz | pravila napravljena, radio radi, pravila uklonjena | PASS (G, kao administrator); dozvola kao običan korisnik NEPROVERENA |
+| 4 Uputstvo | `UPUTSTVO.txt` na srpskom: instalacija, svakodnevno, najave, kopija, nadogradnja, uklanjanje, završna proba | – | napisano |
+
+Ispravljeno usput: kopija baze je mogla da ostane delom u `-wal` fajlu (sada uvek jedan fajl); B-197 test čekao samo oslobađanje niti, ne i upis.
+
+R: ništa iz FINAL nije probano. M: NOT TESTED – ACCEPTED RISK. Program NIJE proglašen spremnim za lokal.
