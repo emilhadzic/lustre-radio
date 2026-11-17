@@ -17,6 +17,9 @@ public sealed record DirectorOptions
     /// <summary>Smart Crossfade (spec. 5.2): koristi analizu krajeva pesme kad postoji; inace obicno pretapanje.</summary>
     public bool SmartCrossfade { get; init; } = true;
 
+    /// <summary>DJ Mix uzivo (spec. 5.3) gde program to trazi i analiza dozvoljava; inace Smart.</summary>
+    public bool DjMix { get; init; } = true;
+
     /// <summary>Ulazak zvuka pri nastavku pesme posle restarta.</summary>
     public double ResumeFadeInSeconds { get; init; } = 3;
 
@@ -487,7 +490,13 @@ public sealed class RadioDirector : IPlanner
 
     // ---------------- planer (B4): izbor na niti koordinatora, otvaranje na radnoj niti ----------------
 
-    private sealed record PlanTag(TrackRecord Record, RotationReservation Reservation, string? Program, bool Closing);
+    private sealed record PlanTag(TrackRecord Record, RotationReservation Reservation, string? Program, bool Closing)
+    {
+        /// <summary>Pesma koja svira pre ove (za DJ Mix); null ako se ne zna.</summary>
+        public string? PreviousTrackId { get; init; }
+
+        public TransitionMode Transition { get; init; } = TransitionMode.Smart;
+    }
 
     public (int Size, string? Reason) Capacity()
     {
@@ -580,7 +589,7 @@ public sealed class RadioDirector : IPlanner
                 Tier = (byte)((int)tier + 1),
                 Program = decision.Program.Name,
                 Path = record.Path,
-                Tag = new PlanTag(record, reservation, decision.Program.Name, closing),
+                Tag = new PlanTag(record, reservation, decision.Program.Name, closing) { PreviousTrackId = last, Transition = decision.Program.Transition },
             };
         }
     }
@@ -605,8 +614,15 @@ public sealed class RadioDirector : IPlanner
         lock (_sync)
         {
             var decision = ScheduleEngine.Evaluate(_schedule, _override, _clock.NowLocal);
+            DjCue? cue = null;
+            if (_options.DjMix && _options.SmartCrossfade && tag.PreviousTrackId is { } previous && _records.TryGetValue(previous, out var before))
+            {
+                cue = DjCuePlanner.Plan(tag.Transition, before, tag.Record, _format);
+            }
+
             return queued with
             {
+                Cue = cue,
                 PlaybackId = item.PlaybackId,
                 Path = tag.Record.Path,
                 Info = new NowPlaying(item.TrackId, tag.Record.Title, tag.Record.Artist, tag.Program ?? string.Empty, decision.Part, Resumed: false, tag.Record.DurationSeconds),
@@ -703,7 +719,7 @@ public sealed class RadioDirector : IPlanner
                 var gain = TrackGain.ToLinear(TrackGain.ComputeDb(record.Lufs, record.PeakDbfs, _options.Loudness));
 
                 // signal 2: pesma koja se sama stisava pretapa se tokom svog stisavanja (3-10 s); nagao kraj: obicno pretapanje
-                return new QueuedTrack(id, shaped, gain) { TransitionSeconds = smart ? record.OutroSeconds : null };
+                return new QueuedTrack(id, shaped, gain) { TransitionSeconds = smart ? record.OutroSeconds : null, StartSkipFrames = skip };
             }
             catch
             {

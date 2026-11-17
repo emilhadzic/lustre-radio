@@ -111,5 +111,8 @@ internal static class Schema
         ("audio_end_frames", "INTEGER"),
         ("outro_seconds", "REAL"),
         ("edges_version", "INTEGER NOT NULL DEFAULT 0"),
+        ("beat_period_frames", "REAL"),
+        ("first_beat_frames", "INTEGER"),
+        ("tempo_stable", "INTEGER NOT NULL DEFAULT 0"),
     ];
 }

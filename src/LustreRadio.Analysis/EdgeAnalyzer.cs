@@ -12,8 +12,8 @@ public sealed record EdgeResult(long AudioStartFrame, long AudioEndFrame, double
 /// </summary>
 public sealed class EdgeAnalyzer
 {
-    /// <summary>Verzija analize; pesme sa starijom verzijom se analiziraju ponovo.</summary>
-    public const int Version = 1;
+    /// <summary>Verzija analize (krajevi + tempo od verzije 2); pesme sa starijom verzijom se analiziraju ponovo.</summary>
+    public const int Version = 2;
 
     /// <summary>Prag tisine: -60 dBFS.</summary>
     public const float SilenceThreshold = 0.001f;

@@ -43,6 +43,9 @@ public sealed record ScannedFile
     /// <summary>Krajevi pesme (Smart Crossfade); null ako analiza nije uradjena ili je fajl sav tisina.</summary>
     public EdgeResult? Edges { get; init; }
 
+    /// <summary>Tempo i mreza udaraca (DJ Mix); null ako ritam nije prepoznat.</summary>
+    public TempoResult? Tempo { get; init; }
+
     public string Title { get; init; } = string.Empty;
 
     public string Artist { get; init; } = string.Empty;
@@ -135,12 +138,14 @@ public static class TrackScanner
             var peak = 0f;
             var loudness = new LoudnessMeter(sourceRate);
             var edges = new EdgeAnalyzer(sourceRate);
+            var tempo = new TempoAnalyzer(sourceRate);
             int read;
             while ((read = source.Read(buffer)) > 0)
             {
                 frames += read;
                 loudness.Add(buffer.AsSpan(0, read * 2));
                 edges.Add(buffer.AsSpan(0, read * 2));
+                tempo.Add(buffer.AsSpan(0, read * 2));
                 foreach (var sample in buffer.AsSpan(0, read * 2))
                 {
                     var magnitude = Math.Abs(sample);
@@ -167,6 +172,7 @@ public static class TrackScanner
                 PeakDbfs = peak > 0 ? 20 * Math.Log10(peak) : null,
                 Lufs = loudness.IntegratedLufs(),
                 Edges = edges.Result(),
+                Tempo = tempo.Result(),
             };
         }
         catch (Exception ex)

@@ -55,6 +55,7 @@ public static class DefaultSchedule
         BpmMin = bpmMin,
         BpmMax = bpmMax,
         Energy = energy,
+        Transition = TransitionMode.DjMix, // DJ Mix samo gde analiza dozvoljava (stabilan tempo, razlika do 0,3 %); inace Smart
     };
 
     private static DaySchedule Day(string name, SlotProgram morning, SlotProgram afternoon, SlotProgram evening) => new()

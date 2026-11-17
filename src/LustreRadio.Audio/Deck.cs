@@ -47,6 +47,9 @@ public sealed class Deck
     /// <summary>Duzina pretapanja kad ova pesma izlazi (Smart Crossfade: prema stisavanju na kraju pesme).</summary>
     public long TransitionFrames { get; set; }
 
+    /// <summary>Koliko izlaznih frejmova je preskoceno na pocetku pesme (za proveru DJ prelaza).</summary>
+    public long StartSkipFrames { get; set; }
+
     /// <summary>Broj frejmova procitanih iz izvora.</summary>
     public long Position { get; private set; }
 

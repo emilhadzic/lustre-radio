@@ -16,6 +16,30 @@ public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1
 
     /// <summary>Smart Crossfade: duzina pretapanja kad ova pesma izlazi (s). null = obicno pretapanje.</summary>
     public double? TransitionSeconds { get; init; }
+
+    /// <summary>Koliko je izlaznih frejmova preskoceno na pocetku (tisina ili nastavak); DJ prelaz vazi samo uz isti preskok.</summary>
+    public long StartSkipFrames { get; init; }
+
+    /// <summary>DJ Mix uzivo: kada i kako ova pesma ulazi preko prethodne. null = Smart/obicno pretapanje.</summary>
+    public DjCue? Cue { get; init; }
+}
+
+/// <summary>
+/// DJ Mix uzivo (spec. 5.3): ova pesma ulazi kad prethodna stigne do tacne pozicije, tako da se udarci poklope.
+/// Vazi samo ako prethodna pesma jeste ta za koju je racunato i pustena je od istog mesta.
+/// </summary>
+public sealed record DjCue
+{
+    public required string PreviousTrackId { get; init; }
+
+    /// <summary>Preskok na pocetku prethodne pesme za koji je pozicija racunata (izlazni frejmovi).</summary>
+    public long PreviousStartSkip { get; init; }
+
+    /// <summary>Pozicija prethodne pesme (izlazni frejmovi od njenog pocetka) na kojoj ova krece.</summary>
+    public long StartAtPreviousPosition { get; init; }
+
+    /// <summary>Duzina pretapanja (izlazni frejmovi).</summary>
+    public long FadeFrames { get; init; }
 }
 
 /// <summary>Zapis o tome sta je i kada pusteno (pozicija u izlaznom toku, u frejmovima).</summary>
@@ -77,6 +101,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private const int EventPool = 64;
     private readonly TrackEvent[] _pool = CreatePool();
     private long _published;
+    private long _djTransitions;
     private readonly List<TrackEvent> _log = [];
     private readonly PlayTickets _tickets;
     private readonly long _skipFadeFrames;
@@ -143,6 +168,9 @@ public sealed class CrossfadeSequencer : IFrameProvider
     /// Sve pesme koje su krenule, redom (kopije). Za testove i dijagnostiku; Engine ga ne koristi, pa u radu ne raste.
     /// Cita se sa druge niti; audio-nit se ne ceka.
     /// </summary>
+    /// <summary>Broj DJ prelaza uzivo (udarci poravnati).</summary>
+    public long DjTransitions => Interlocked.Read(ref _djTransitions);
+
     public IReadOnlyList<TrackEvent> Events
     {
         get
@@ -404,6 +432,26 @@ public sealed class CrossfadeSequencer : IFrameProvider
         }
 
         var untilTransition = remaining - fade;
+
+        // DJ Mix uzivo: sledeca je vec predata i racunata bas za ovu pesmu -> pocetak tacno na udarac (bez cekanja i bez kasnjenja)
+        if (_handoff.Peek()?.Track.Cue is { } cue && _currentEvent is { } now && cue.PreviousTrackId == now.Id &&
+            cue.PreviousStartSkip == _current.StartSkipFrames && cue.StartAtPreviousPosition >= _current.Position)
+        {
+            var djUntil = cue.StartAtPreviousPosition - _current.Position;
+            if (djUntil > 0)
+            {
+                return (int)Math.Min(chunk, djUntil);
+            }
+
+            BeginTransition(Math.Max(1, Math.Min(cue.FadeFrames, remaining)));
+            if (_transition)
+            {
+                Interlocked.Increment(ref _djTransitions);
+            }
+
+            return chunk;
+        }
+
         if (untilTransition > 0)
         {
             return (int)Math.Min(chunk, untilTransition);
@@ -574,6 +622,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
         deck.Load(item.Source, item.Track.Gain);
         deck.TransitionFrames = item.Track.TransitionSeconds is double seconds && seconds > 0 ? Format.FramesFromSeconds(seconds) : _crossfadeFrames;
+        deck.StartSkipFrames = item.Track.StartSkipFrames;
         deck.StartFadeIn(fadeInFrames, fadeStart);
         return true;
     }

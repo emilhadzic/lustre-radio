@@ -67,6 +67,10 @@ public static class LibraryIndexer
                 AudioEndFrame = scanned.Edges?.AudioEndFrame,
                 OutroSeconds = scanned.Edges?.OutroSeconds,
                 EdgesVersion = scanned.DecodeOk ? EdgeAnalyzer.Version : 0,
+                Bpm = scanned.Tempo?.Bpm,
+                BeatPeriodFrames = scanned.Tempo?.BeatPeriodFrames,
+                FirstBeatFrame = scanned.Tempo?.FirstBeatFrame,
+                TempoStable = scanned.Tempo?.Stable ?? false,
             });
 
             if (scanned.Lufs is not null && unmeasured.Contains(path) && byPath[path].Lufs is null)
