@@ -7,6 +7,7 @@
   <ItemGroup>
     <ProjectReference Include="..\LustreRadio.Core\LustreRadio.Core.csproj" />
     <ProjectReference Include="..\LustreRadio.Audio\LustreRadio.Audio.csproj" />
+    <ProjectReference Include="..\LustreRadio.Analysis\LustreRadio.Analysis.csproj" />
     <ProjectReference Include="..\LustreRadio.Data\LustreRadio.Data.csproj" />
     <ProjectReference Include="..\LustreRadio.Library\LustreRadio.Library.csproj" />
     <ProjectReference Include="..\LustreRadio.Ipc\LustreRadio.Ipc.csproj" />
