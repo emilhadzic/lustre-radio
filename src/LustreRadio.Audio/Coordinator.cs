@@ -1,3 +1,4 @@
+using LustreRadio.Core.Diagnostics;
 using System.Diagnostics;
 using System.Globalization;
 using LustreRadio.Core.History;
@@ -237,15 +238,34 @@ public sealed class Coordinator : IDisposable
             throw new InvalidOperationException("Koordinator radi na svojoj niti.");
         }
 
-        for (var i = 0; i < 10_000; i++)
+        // Rad bez niti zamenjuje nit koordinatora (samo testovi i priprema unapred): cuvar ga ne broji kao audio-nit.
+        var audio = AudioThreadGuard.IsAudioThread;
+        AudioThreadGuard.UnmarkCurrentThread();
+        try
         {
-            ((InlineWorker)_worker).Pump(clockFrames);
-            if (!Step(clockFrames))
+            for (var i = 0; i < 10_000; i++)
             {
-                return;
+                ((InlineWorker)_worker).Pump(clockFrames);
+                if (!Step(clockFrames))
+                {
+                    return;
+                }
+            }
+        }
+        finally
+        {
+            if (audio)
+            {
+                AudioThreadGuard.MarkCurrentThread();
             }
         }
     }
+
+    /// <summary>
+    /// Poziva se na pocetku svakog koraka koordinatora (njegova nit, oko 20 ms). Za posao koji ne sme na audio-nit,
+    /// a njen rezultat audio-nit cita kao jednu vrednost (npr. "da li jos radimo po rasporedu").
+    /// </summary>
+    public Action? StepHook { get; set; }
 
     /// <summary>
     /// Posle zaustavljanja zvuka: pripremljene stavke koje nisu krenule se odbacuju (zapis <c>odbacena</c>).
@@ -467,6 +487,7 @@ public sealed class Coordinator : IDisposable
     /// <summary>Jedan korak koordinatora. Vraca true ako je nesto uradio.</summary>
     private bool Step(long now)
     {
+        StepHook?.Invoke();
         var progress = false;
         while (_worker.TryGetResult(out var result))
         {

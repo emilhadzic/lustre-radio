@@ -1,4 +1,3 @@
-using LustreRadio.Core.Diagnostics;
 using LustreRadio.Core.History;
 
 namespace LustreRadio.Audio;
@@ -19,9 +18,9 @@ public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1
 /// <summary>Zapis o tome sta je i kada pusteno (pozicija u izlaznom toku, u frejmovima).</summary>
 public sealed class TrackEvent
 {
-    public required string Id { get; init; }
+    public string Id { get; internal set; } = string.Empty;
 
-    public required long StartFrame { get; init; }
+    public long StartFrame { get; internal set; }
 
     public bool Faulted { get; set; }
 
@@ -29,15 +28,28 @@ public sealed class TrackEvent
 
     public bool FailedToLoad { get; set; }
 
-    public Guid PlaybackId { get; init; }
+    public Guid PlaybackId { get; internal set; }
 
-    public long TrackNumber { get; init; }
+    public long TrackNumber { get; internal set; }
 
     /// <summary>Dugme Sledeca je pokrenulo prelaz sa ove pesme.</summary>
     public bool Skipped { get; set; }
 
     /// <summary>Rucka kartice (B4); dogadjaji idu u karticu, a u istoriju ih prepisuje koordinator.</summary>
-    public long Ticket { get; init; } = -1;
+    public long Ticket { get; internal set; } = -1;
+
+    internal void CopyFrom(TrackEvent other)
+    {
+        Id = other.Id;
+        StartFrame = other.StartFrame;
+        Faulted = other.Faulted;
+        EndedEarly = other.EndedEarly;
+        FailedToLoad = other.FailedToLoad;
+        PlaybackId = other.PlaybackId;
+        TrackNumber = other.TrackNumber;
+        Skipped = other.Skipped;
+        Ticket = other.Ticket;
+    }
 }
 
 /// <summary>
@@ -58,7 +70,11 @@ public sealed class CrossfadeSequencer : IFrameProvider
     private readonly long _recoveryFadeFrames;
     private readonly long _shortestTransition;
     private readonly float[] _scratch = new float[MaxChunkFrames * 2];
-    private readonly List<TrackEvent> _events = [];
+    // B5: dogadjaji pesama u unapred napravljenom krugu; audio-nit ne zauzima memoriju i ne zakljucava.
+    private const int EventPool = 64;
+    private readonly TrackEvent[] _pool = CreatePool();
+    private long _published;
+    private readonly List<TrackEvent> _log = [];
     private readonly PlayTickets _tickets;
     private readonly long _skipFadeFrames;
 
@@ -120,7 +136,43 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
     public Coordinator Coordinator => _coordinator;
 
-    public IReadOnlyList<TrackEvent> Events => _events;
+    /// <summary>
+    /// Sve pesme koje su krenule, redom (kopije). Za testove i dijagnostiku; Engine ga ne koristi, pa u radu ne raste.
+    /// Cita se sa druge niti; audio-nit se ne ceka.
+    /// </summary>
+    public IReadOnlyList<TrackEvent> Events
+    {
+        get
+        {
+            lock (_log)
+            {
+                var n = Volatile.Read(ref _published);
+                for (var i = (long)_log.Count; i < n; i++)
+                {
+                    _log.Add(new TrackEvent());
+                }
+
+                // poslednjih EventPool pesama se jos menja (greska, Sledeca): osvezi kopije
+                for (var i = Math.Max(0, n - EventPool); i < n; i++)
+                {
+                    _log[(int)i].CopyFrom(_pool[i % EventPool]);
+                }
+
+                return _log;
+            }
+        }
+    }
+
+    private static TrackEvent[] CreatePool()
+    {
+        var pool = new TrackEvent[EventPool];
+        for (var i = 0; i < pool.Length; i++)
+        {
+            pool[i] = new TrackEvent();
+        }
+
+        return pool;
+    }
 
     /// <summary>Ukupan broj do sada proizvedenih frejmova.</summary>
     public long OutputFrames => Interlocked.Read(ref _outFrames);
@@ -140,17 +192,15 @@ public sealed class CrossfadeSequencer : IFrameProvider
     /// <summary>Poslednja pustena pesma i gde je pocela u izlaznom toku. Sme sa druge niti.</summary>
     public bool TryGetLatestEvent(out string id, out long startFrame)
     {
-        AudioThreadGuard.Touch(AudioViolation.Lock);
-        lock (_events)
+        var n = Volatile.Read(ref _published);
+        for (var i = n - 1; i >= Math.Max(0, n - EventPool); i--)
         {
-            for (var i = _events.Count - 1; i >= 0; i--)
+            var e = _pool[i % EventPool];
+            if (!e.FailedToLoad)
             {
-                if (!_events[i].FailedToLoad)
-                {
-                    id = _events[i].Id;
-                    startFrame = _events[i].StartFrame;
-                    return true;
-                }
+                id = e.Id;
+                startFrame = e.StartFrame;
+                return true;
             }
         }
 
@@ -505,19 +555,18 @@ public sealed class CrossfadeSequencer : IFrameProvider
             return false;
         }
 
-        trackEvent = new TrackEvent
-        {
-            Id = item.Track.Id,
-            StartFrame = _outFrames,
-            PlaybackId = item.Track.PlaybackId,
-            TrackNumber = item.TrackNumber,
-            Ticket = item.Ticket,
-        };
-        AudioThreadGuard.Touch(AudioViolation.Lock);
-        lock (_events)
-        {
-            _events.Add(trackEvent);
-        }
+        var slot = _published;
+        trackEvent = _pool[slot % EventPool];
+        trackEvent.Id = item.Track.Id;
+        trackEvent.StartFrame = _outFrames;
+        trackEvent.PlaybackId = item.Track.PlaybackId;
+        trackEvent.TrackNumber = item.TrackNumber;
+        trackEvent.Ticket = item.Ticket;
+        trackEvent.Faulted = false;
+        trackEvent.EndedEarly = false;
+        trackEvent.FailedToLoad = false;
+        trackEvent.Skipped = false;
+        Volatile.Write(ref _published, slot + 1); // objava: citalac koji vidi broj vidi i polja
 
         deck.Load(item.Source, item.Track.Gain);
         deck.StartFadeIn(fadeInFrames, fadeStart);

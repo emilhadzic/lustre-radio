@@ -7,9 +7,13 @@ namespace LustreRadio.Playout;
 public sealed class ClosingFader(IFrameProvider inner, Func<bool> shouldPlay, double fadeSeconds) : IFrameProvider
 {
     private readonly long _fadeFrames = Math.Max(1, inner.Format.FramesFromSeconds(fadeSeconds));
+    private volatile bool _shouldPlay = shouldPlay();
     private bool _fading;
     private bool _ended;
     private long _fadePos;
+
+    /// <summary>Ponovo procenjuje raspored. Poziva ga koordinator (ne audio-nit): raspored ima bravu.</summary>
+    public void Refresh() => _shouldPlay = shouldPlay();
 
     public AudioFormat Format => inner.Format;
 
@@ -29,7 +33,7 @@ public sealed class ClosingFader(IFrameProvider inner, Func<bool> shouldPlay, do
             return 0;
         }
 
-        if (!_fading && !shouldPlay())
+        if (!_fading && !_shouldPlay)
         {
             _fading = true;
         }
@@ -67,7 +71,6 @@ public sealed class RadioSession
     private readonly CrossfadeSequencer _sequencer;
     private readonly ClosingFader _fader;
     private readonly AudioFormat _format;
-    private readonly HashSet<TrackEvent> _reported = [];
     private QueuedTrack? _resume;
     private string? _resumedId;
     private double _resumeOffsetSeconds;
@@ -108,6 +111,7 @@ public sealed class RadioSession
             history: _history);
         _coordinator.Start();
         _fader = new ClosingFader(_sequencer, director.ShouldPlayNow, director.Schedule.FadeOutSeconds);
+        _coordinator.StepHook = _fader.Refresh;
     }
 
     public IFrameProvider Output => _fader;
@@ -144,21 +148,6 @@ public sealed class RadioSession
     /// <summary>Periodicno (npr. jednom u sekundi): prijavljuje greske pesama i cuva snimak stanja.</summary>
     public void Tick(bool saveSnapshot)
     {
-        TrackEvent[] events;
-        lock (_sequencer.Events)
-        {
-            events = [.. _sequencer.Events];
-        }
-
-        foreach (var e in events)
-        {
-            // B3: greska tokom pustanja se broji tek kad je potvrdjena (DecodeFailed -> HandleDecodeFailure)
-            if (e.FailedToLoad && _reported.Add(e))
-            {
-                _director.ReportFault(e.Id);
-            }
-        }
-
         if (saveSnapshot && !_fader.Ended && TryGetPosition(out var id, out var position))
         {
             var plan = _coordinator.Plan.Items;

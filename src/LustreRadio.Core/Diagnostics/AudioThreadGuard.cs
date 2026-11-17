@@ -31,6 +31,9 @@ public static class AudioThreadGuard
     [ThreadStatic]
     private static bool t_audio;
 
+    [ThreadStatic]
+    private static long t_count;
+
     public static bool IsAudioThread => t_audio;
 
     /// <summary>Obelezava trenutnu nit kao audio-nit.</summary>
@@ -44,8 +47,12 @@ public static class AudioThreadGuard
         if (t_audio)
         {
             Interlocked.Increment(ref Counts[(int)kind]);
+            t_count++;
         }
     }
+
+    /// <summary>Broj prijava na trenutnoj niti (dok je bila obelezena kao audio-nit).</summary>
+    public static long CurrentThreadCount => t_count;
 
     public static long Count(AudioViolation kind) => Interlocked.Read(ref Counts[(int)kind]);
 
