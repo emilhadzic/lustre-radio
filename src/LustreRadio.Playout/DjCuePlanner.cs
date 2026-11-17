@@ -26,7 +26,6 @@ public static class DjCuePlanner
     {
         ArgumentNullException.ThrowIfNull(a);
         ArgumentNullException.ThrowIfNull(b);
-        ArgumentNullException.ThrowIfNull(output);
         var choice = TransitionSelector.Select(mode, Summary(a), Summary(b), new DjMixSettings(), preparedTransitionAvailable: false);
         if (choice.Kind != TransitionKind.DjMixLive)
         {
@@ -88,7 +87,6 @@ public static class DjCuePlanner
     public static long SmartSkipFrames(TrackRecord record, AudioFormat output)
     {
         ArgumentNullException.ThrowIfNull(record);
-        ArgumentNullException.ThrowIfNull(output);
         return record.AudioStartFrame is long start && start > 0 && record.SampleRate > 0
             ? (long)Math.Round(start * (double)output.SampleRate / record.SampleRate)
             : 0;
