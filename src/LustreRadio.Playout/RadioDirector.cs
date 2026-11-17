@@ -291,6 +291,9 @@ public sealed class RadioDirector : IPlanner
             return null;
         }
 
+        TrackRecord chosen;
+        string program;
+        DayPart? part;
         AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
@@ -318,16 +321,24 @@ public sealed class RadioDirector : IPlanner
                 return null;
             }
 
-            var queued = TryOpen(record, snapshot.PositionSeconds);
-            if (queued is not null)
-            {
-                queued = queued with { Path = record.Path };
-                queued = queued with { PlaybackId = Guid.CreateVersion7() };
-                queued = queued with { Info = new NowPlaying(snapshot.TrackId, record.Title, record.Artist, decision.Program?.Name ?? string.Empty, decision.Part, Resumed: true, record.DurationSeconds) };
-            }
-
-            return queued;
+            chosen = record;
+            program = decision.Program?.Name ?? string.Empty;
+            part = decision.Part;
         }
+
+        // Fajl se otvara VAN brave reditelja: zaglavljen fajl ne sme da zaustavi raspored, stanje i komande.
+        var queued = TryOpen(chosen, snapshot.PositionSeconds);
+        if (queued is not null)
+        {
+            queued = queued with
+            {
+                Path = chosen.Path,
+                PlaybackId = Guid.CreateVersion7(),
+                Info = new NowPlaying(snapshot.TrackId, chosen.Title, chosen.Artist, program, part, Resumed: true, chosen.DurationSeconds),
+            };
+        }
+
+        return queued;
     }
 
     /// <summary>
@@ -578,15 +589,17 @@ public sealed class RadioDirector : IPlanner
             return null;
         }
 
+        // Fajl se otvara VAN brave reditelja (radna nit): zaglavljen fajl ne sme da zaustavi raspored, stanje,
+        // komande i koordinatora; zastoj tada otkriva koordinator (T2, proba diska) i radna nit se napusta.
+        var queued = TryOpen(tag.Record, startSeconds: 0);
+        if (queued is null)
+        {
+            return null;
+        }
+
         AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {
-            var queued = TryOpen(tag.Record, startSeconds: 0);
-            if (queued is null)
-            {
-                return null;
-            }
-
             var decision = ScheduleEngine.Evaluate(_schedule, _override, _clock.NowLocal);
             return queued with
             {
@@ -648,7 +661,7 @@ public sealed class RadioDirector : IPlanner
             if (!info.Exists || info.Length != record.SizeBytes || info.LastWriteTimeUtc != record.LastWriteUtc)
             {
                 _log($"Fajl je nestao ili je menjan posle skeniranja; ne pusta se dok se ponovo ne skenira: {record.Path}");
-                _unplayable.Add(id);
+                MarkUnplayable(id);
                 return null;
             }
 
@@ -680,8 +693,16 @@ public sealed class RadioDirector : IPlanner
         {
             var faults = _db.Tracks.RecordFault(record.Id);
             _log($"Ne moze da se otvori ({faults}. put): {record.Path}: {ex.Message}");
-            _unplayable.Add(id);
+            MarkUnplayable(id);
             return null;
+        }
+    }
+
+    private void MarkUnplayable(string id)
+    {
+        lock (_sync)
+        {
+            _unplayable.Add(id);
         }
     }
 

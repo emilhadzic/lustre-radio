@@ -51,12 +51,13 @@ try {
     if ($stuck.Count -lt 4) { throw "ocekivano 4 zaglavljena poziva (3 napustene + aktivna), bilo: $($stuck.Count)" }
 
     WaitFor { @(Lines 'watchdog' | Where-Object { $_ -match 'Pokrenut audio proces' }).Count -ge 2 } 60 'nadzor je ponovo pokrenuo Engine'
-    WaitFor { @(Lines 'engine' | Where-Object { $_ -match 'Svira: ' }).Count -ge 1 } 60 'posle ponovnog pokretanja muzika krece'
+    # Na G nema zvucnog uredjaja, pa pesma ne odmice; dokaz da radio radi dalje je da novi Engine priprema (otvara) sledece pesme.
+    function Opened2 { @(Get-Content (Join-Path $data 'otvoreni.txt') | Where-Object { -not $_.StartsWith("$firstPid ") } | ForEach-Object { $_.Split(' ')[1] }) }
+    WaitFor { (Opened2).Count -ge 1 } 60 'posle ponovnog pokretanja Engine priprema pesme'
     $back = (Get-Date) - $t0
     Start-Sleep 5
-    $playing = @(Lines 'engine' | Where-Object { $_ -match 'Svira: ' } | ForEach-Object { if ($_ -match '(ton-\d+)') { $Matches[1] } })
-    $opened2 = @(Get-Content (Join-Path $data 'otvoreni.txt') | Where-Object { -not $_.StartsWith("$firstPid ") } | ForEach-Object { $_.Split(' ')[1] })
-    Write-Host "posle ponovnog pokretanja: svira $($playing -join ', '); otvoreno $($opened2 -join ', ')"
+    $opened2 = Opened2
+    Write-Host "posle ponovnog pokretanja otvoreno: $($opened2 -join ', ')"
     $bad = @($opened2 | Where-Object { $stuck -contains $_ })
     if ($bad.Count -gt 0) { throw "pesme iz karantina su ponovo otvorene: $($bad -join ', ')" }
 
@@ -70,7 +71,7 @@ try {
     if (Get-ChildItem $Bin -Filter 'LustreRadio.TestEngine*') { throw 'probni Engine je u paketu za korisnika' }
 
     Write-Host ("REZULTAT | B-196 skraceno | od pokretanja do zahteva za ponovno pokretanje | {0:N1} s" -f $restartAt.TotalSeconds)
-    Write-Host ("REZULTAT | B-196 skraceno | od pokretanja do muzike posle oporavka | {0:N1} s" -f $back.TotalSeconds)
+    Write-Host ("REZULTAT | B-196 skraceno | od pokretanja do pripreme pesama posle oporavka | {0:N1} s" -f $back.TotalSeconds)
     Write-Host 'OPORAVAK: SVI KORACI PROSLI'
 }
 finally {
