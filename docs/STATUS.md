@@ -521,3 +521,5 @@ Greške pronađene i ispravljene u B6: (1) reditelj je otvarao fajl pod svojom b
 Konačan pregled za vlasnika: Docs „LUSTRE RADIO – konačan pregled posle faze B“.
 
 **Odluka vlasnika 17.11.2026. 13:03:** B6 i rezultati faze B prihvaćeni. `faza-b` se NE spaja u `main` dok vlasnik ne potvrdi da je instalacioni paket proveren na njegovom računaru. Pripremljen samo početni plan za LUSTRE RADIO FINAL (Docs dokument); rad na njemu nije počeo.
+
+**Odluke vlasnika 17.11.2026. 13:14 (LUSTRE RADIO FINAL):** odobrena četiri koraka (Smart Crossfade, DJ Mix, AI Voice Studio i najave, završno povezivanje i instalacija), bez novih faza i bez proširivanja specifikacije v4.1; automatski testovi samo za ključne rizike; glavno merilo je slušanje. DJ Mix samo uživo (stabilne pesme, razlika tempa do 0,3%), ostalo Smart; pripremljeni prelazi 0,3–2% odloženi. Glas: prvo poređenje ElevenLabs i Azure na istim rečenicama, plaćeni plan tek posle izbora. Noćna automatska kopija baze ulazi u korak 4. Smart Crossfade počinje tek kad vlasnik potvrdi instalaciju faze B i kad `faza-b` bude spojena u `main`.
