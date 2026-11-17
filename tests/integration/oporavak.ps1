@@ -27,7 +27,6 @@ Start-Sleep 1
 if (Test-Path $data) { Remove-Item $data -Recurse -Force }
 New-Item -ItemType Directory -Force $data | Out-Null
 'probni engine' | Set-Content (Join-Path $data 'probni-engine.txt')
-New-Item -ItemType File (Join-Path $data 'zaglavi-sve.flag') | Out-Null
 
 $pkg = Join-Path $env:RUNNER_TEMP 'paket-oporavak'
 if (Test-Path $pkg) { Remove-Item $pkg -Recurse -Force }
@@ -35,6 +34,11 @@ Copy-Item $Bin $pkg -Recurse
 Remove-Item (Join-Path $pkg 'LustreRadio.Engine.exe')
 Copy-Item (Join-Path $TestEngineBin 'LustreRadio.TestEngine*') $pkg
 Rename-Item (Join-Path $pkg 'LustreRadio.TestEngine.exe') 'LustreRadio.Engine.exe'
+
+# priprema (muzika, skeniranje, izjava o licenci) pre nadzora; tek posle nje znak da se prvo pokretanje zaglavi
+$prep = Start-Process (Join-Path $pkg 'LustreRadio.Engine.exe') -ArgumentList '--priprema' -Wait -PassThru -NoNewWindow
+if ($prep.ExitCode -ne 0) { throw "priprema probnog Engine-a: kod $($prep.ExitCode)" }
+New-Item -ItemType File (Join-Path $data 'zaglavi-sve.flag') | Out-Null
 
 try {
     $t0 = Get-Date
@@ -74,5 +78,5 @@ finally {
     Write-Host '--- dnevnik nadzora ---'
     Lines 'watchdog' | Select-Object -Last 40
     Write-Host '--- dnevnik audio procesa ---'
-    Lines 'engine' | Where-Object { $_ -match 'LUSTRE RADIO Engine|Svira|zaglav|karantin|Kontrolisano|napust|FTL|ERR|WRN' } | Select-Object -Last 60
+    Lines 'engine' | Select-Object -Last 120
 }

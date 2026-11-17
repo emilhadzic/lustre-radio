@@ -2,7 +2,7 @@
   <!-- Probni Engine (D8-6): isti kod radija, uz zaglavljen "dekoder" kojim upravlja test. NIKAD ne ide u paket za korisnika. -->
   <PropertyGroup>
     <TargetFramework>net10.0-windows</TargetFramework>
-    <OutputType>WinExe</OutputType>
+    <OutputType>Exe</OutputType>
     <IsPackable>false</IsPackable>
     <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
   </PropertyGroup>

@@ -21,21 +21,32 @@ public static class Program
         var root = AppPaths.DefaultDataRoot;
         Directory.CreateDirectory(root);
         var setup = File.Exists(Path.Combine(root, "probni-engine.txt"));
-        var flag = Path.Combine(root, "zaglavi-sve.flag");
-        var stallAll = File.Exists(flag);
-        if (stallAll)
-        {
-            File.Delete(flag);
-        }
-
         var music = Path.Combine(root, "probna-muzika");
-        if (setup && !Directory.Exists(music))
+        var prepare = args.Contains("--priprema");
+        if (prepare)
         {
+            // pre pokretanja nadzora: muzika, skeniranje i izjava o licenci, da prvo pokretanje odmah odgovara nadzoru
             Directory.CreateDirectory(music);
             for (var i = 0; i < 8; i++)
             {
                 WriteTone(Path.Combine(music, $"ton-{300 + (i * 100)}.wav"), 300 + (i * 100), 20);
             }
+
+            using var host = new EngineHost(new EngineHostOptions { DataRoot = root, MusicFolders = [music], AlwaysOpen = true, Log = Console.WriteLine });
+            Console.WriteLine("skenirano: " + host.Index());
+            host.Database.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, new CollectiveLicense
+            {
+                Organizations = "SOKOJ, OFPS", DeclaredBy = "probni Engine", DeclaredAt = DateTimeOffset.Now,
+            });
+            Console.WriteLine("potvrdjeno pesama: " + LibraryIndexer.ApplyCollectiveLicense(host.Database));
+            return 0;
+        }
+
+        var flag = Path.Combine(root, "zaglavi-sve.flag");
+        var stallAll = File.Exists(flag);
+        if (stallAll)
+        {
+            File.Delete(flag);
         }
 
         var run = Environment.ProcessId;
@@ -63,24 +74,7 @@ public static class Program
                     }
                 },
             },
-            host =>
-            {
-                if (!setup)
-                {
-                    return;
-                }
-
-                host.Index();
-                if (host.Database.Settings.GetJson<CollectiveLicense>(LibraryIndexer.CollectiveLicenseKey) is null)
-                {
-                    host.Database.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, new CollectiveLicense
-                    {
-                        Organizations = "SOKOJ, OFPS", DeclaredBy = "probni Engine", DeclaredAt = DateTimeOffset.Now,
-                    });
-                }
-
-                LibraryIndexer.ApplyCollectiveLicense(host.Database);
-            });
+            null);
     }
 
     private static void WriteTone(string path, int hz, double seconds)
