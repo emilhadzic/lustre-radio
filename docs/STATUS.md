@@ -519,3 +519,5 @@ Run 44072649422 (izmena `b306cb6`): sva tri posla zelena; 720 prošlo, 0 palo, 4
 Greške pronađene i ispravljene u B6: (1) reditelj je otvarao fajl pod svojom bravom, pa je zaglavljen fajl zamrzavao ceo Engine (nadzor ga je ubijao kao neodgovarajućeg, bez karantina); (2) zaglavljeno otvaranje fajla nije imalo putanju za probu diska, pa se čekalo zauvek; (3) zaglavljena pesma u pripremi ostajala je u planu i pokušavala se ponovo. Novo: nadzor pokreće i vraća ekran (spec. 2.1). Prva verzija duže simulacije (pesme 12 s) nije bila realna: kod pesama kraćih od dva pretapanja sledeća ne stigne da se pripremi; ponovljena sa pesmama od 20 s.
 
 Konačan pregled za vlasnika: Docs „LUSTRE RADIO – konačan pregled posle faze B“.
+
+**Odluka vlasnika 17.11.2026. 13:03:** B6 i rezultati faze B prihvaćeni. `faza-b` se NE spaja u `main` dok vlasnik ne potvrdi da je instalacioni paket proveren na njegovom računaru. Pripremljen samo početni plan za LUSTRE RADIO FINAL (Docs dokument); rad na njemu nije počeo.
