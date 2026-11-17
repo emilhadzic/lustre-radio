@@ -523,3 +523,22 @@ Konačan pregled za vlasnika: Docs „LUSTRE RADIO – konačan pregled posle fa
 **Odluka vlasnika 17.11.2026. 13:03:** B6 i rezultati faze B prihvaćeni. `faza-b` se NE spaja u `main` dok vlasnik ne potvrdi da je instalacioni paket proveren na njegovom računaru. Pripremljen samo početni plan za LUSTRE RADIO FINAL (Docs dokument); rad na njemu nije počeo.
 
 **Odluke vlasnika 17.11.2026. 13:14 (LUSTRE RADIO FINAL):** odobrena četiri koraka (Smart Crossfade, DJ Mix, AI Voice Studio i najave, završno povezivanje i instalacija), bez novih faza i bez proširivanja specifikacije v4.1; automatski testovi samo za ključne rizike; glavno merilo je slušanje. DJ Mix samo uživo (stabilne pesme, razlika tempa do 0,3%), ostalo Smart; pripremljeni prelazi 0,3–2% odloženi. Glas: prvo poređenje ElevenLabs i Azure na istim rečenicama, plaćeni plan tek posle izbora. Noćna automatska kopija baze ulazi u korak 4. Smart Crossfade počinje tek kad vlasnik potvrdi instalaciju faze B i kad `faza-b` bude spojena u `main`.
+
+## Provera instalacije na računaru vlasnika (R, 17.11.2026., prijavio vlasnik u 14:21)
+
+Paket `LustreRadio-instalacija` iz pokretanja 44072649422 (izmena `b306cb6`).
+
+| # | Provera | R |
+|---|---|---|
+| 1 | Instalacija (INSTALIRAJ.cmd), ekran se otvara, muzika kreće | prošao (R, 17.11.) |
+| 2 | Slušanje oko 30 min; „Sledeća“ tačna | prošao (R, 17.11.) |
+| 3 | Pauza/Pusti, Sledeća više puta, glasnoća | prošao (R, 17.11.) |
+| 4 | Zatvoren ekran: muzika ne staje, ekran se vraća | prošao (R, 17.11.) |
+| 5 | Engine ugašen u Task Manager-u: muzika se vraća | prošao (R, 17.11.) |
+| 6 | Zvučnik/slušalice 30 s isključeni: muzika nastavlja sama | prošao (R, 17.11.) |
+| 7 | Restart računara: radio i ekran sami | prošao (R, 17.11.) |
+| 8 | ZAUSTAVI.cmd / POKRENI.cmd | prošao (R, 17.11.) |
+
+Izvor: izveštaj vlasnika („OK“ za svaku proveru); dnevnici i snimak Provere sistema nisu poslati. Mini PC (M): NOT TESTED – ACCEPTED RISK.
+
+Posle ove provere `faza-b` je spojena u `main` (fast-forward). Sledi LUSTRE RADIO FINAL, korak 1: Smart Crossfade.
