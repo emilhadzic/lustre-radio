@@ -12,3 +12,4 @@
 - Engine je običan proces u korisničkoj sesiji, nikad Windows servis.
 - Ciljni računar: mini PC, Celeron N4000, 4 GB RAM, Windows 11 Home, monitor na dodir, Bluetooth zvučnik, radi 24/7. Na njega ide samo instalacija.
 - Stanje faza: vidi `docs/STATUS.md`.
+- Od 17.11.2026. pojednostavljeno: cilj je pouzdan radio za kafić, ne softver kritičnog sistema. Novi testovi i dokumentacija samo uz konkretan razlog; ne ponavljati testove koje izmena ne dira; sve što nije neophodno za prvu upotrebljivu verziju se odlaže; nove faze i podfaze samo ako su zaista neophodne.

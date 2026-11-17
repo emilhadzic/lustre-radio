@@ -486,3 +486,19 @@ Grana `faza-b`, izmena `3c845b2`, GitHub Actions run 43992862414: **sva tri posl
 Napomene: B-80 – `EventRing` ne postoji, test proverava 100 kratkih pesama uz zaustavljen pisar. B-133 – plan kaže „tekuća se završi“, a B-135 traži da se jedina pesma ponavlja; test proverava da povučene pesme nikad ne krenu. B-26 – izmena fajla posle otvaranja se ne otkriva (prihvaćeno). U radu bez posebne niti (testovi) pesma ne čeka potvrdu dnevnika (0 s); pravilo „potvrda ili 2 s“ proverava B-86 sa pravom niti.
 
 Ostaje otvoreno (nije PASS): B-149 i B-206 (G-sim), B-78 sa 200 pretapanja, B-223 (S5, S7, S8, G-sim) i B-120 (P, T, N2 u stvarnom vremenu) pre konačnog usvajanja pragova, B-196 i B-224 (B6), B-81 i B-132.
+
+**Odluke vlasnika 17.11.2026. 09:34 – pojednostavljenje:** cilj je pouzdan radio za kafić, ne softver kritičnog sistema. B5 u postojećem obimu; B6 samo testovi važni za prekid muzike, gubitak istorije i ozbiljne kvarove; bez novih testova i dokumentacije bez konkretnog razloga; ne ponavljati testove koje izmena ne dira; odložiti sve što nije neophodno za prvu upotrebljivu verziju; posle B6 jednostavan pregled (šta radi, šta nedostaje, šta treba za upotrebu u lokalu). B-81 i B-132 odloženi.
+
+## B5 – audio-nit bez brava i bez zauzimanja memorije (17.11.2026.)
+
+Run 44050742102 (izmena posle `3d92962`): sva tri posla zelena; 720 prošlo, 0 palo, 4 preskočena (isti kao u B4).
+
+| Test | Rezultat |
+|---|---|
+| B-01 | pravi radio (koordinator i radna nit na svojim nitima), 10 min zvuka sa Sledeća, pauzom i glasnoćom: 0 prijava čuvara na audio-niti – PASS (G) |
+| B-02a | isti tok: tačno 0 bajtova u delu „merenje“ (36 pesama) – PASS (G) |
+| B-02c | nit uređaja preko lažnog uređaja: 0 bajtova, 0 prijava – PASS (G) |
+| B-03 | 13 klasa kroz koje prolazi audio-nit: nijedan poziv brave u prevedenom kodu – PASS (G) |
+| G-sim, 4 scenarija | memorija na audio-niti 0 B, brava 0, prazan izlaz 0 – G-sim, nije test na hardveru |
+
+Izmene: događaji pesama u unapred napravljenom krugu od 64 mesta (ranije spisak koji je rastao 24/7 i bravu); provera rasporeda (zatvaranje u 23:30) premeštena sa audio-niti na koordinator; kartica sada proverava generaciju i posle stanja (B-218 je jednom pao zbog tog prozora; samo kod pristupa koji protokol ne dozvoljava). „Strog čuvar“ je ostvaren kroz testove B-01/B-02 (u radu i dalje samo broji, bez prekidača).
