@@ -458,3 +458,31 @@ Rezultati (G, run 43972374926, 17.11.2026.): build i svi koraci prošli; 684 tes
 Novo ponašanje koje treba znati: na početku emitovanja zvuk kreće tek kad je prva pesma pripremljena do punog bafera (G-sim: 0,87 s; pod opterećenjem 2,43 s tišine).
 
 **Odluke vlasnika 17.11.2026. 00:05:** B3 prihvaćen uz otvorene testove; B-196 i B-224 premešteni u B6 (sa probnim Engine-om); svi pragovi ostaju privremeni (T 1 s, N2 1 s, T2 3 s, P 1 s, D 20%, G 50%); odobren B4. Otvoreno (nije PASS): B-195 (mora se izmeriti pouzdano, u posebnom procesu), B-149 i B-206 (G-sim), B-78 sa 200 pretapanja, nedostajući scenariji B-223 (S5, S7, S8, G-sim) i B-120 (P, T i N2 u stvarnom vremenu) pre konačnog usvajanja pragova.
+
+## B4 – planer na koordinatoru, kartice, „Sledeća“ (17.11.2026.)
+
+Grana `faza-b`, izmena `3c845b2`, GitHub Actions run 43992862414: **sva tri posla zelena** (windows, simulacija, ogledi). Ukupno 717 prošlo, 0 palo, 4 preskočena (B-150, B-151, B-180, B-181: rad bez nadogradnje ukinut odlukom za B1, opcija A). `main` nije diran.
+
+| Test | Šta proverava | Stanje |
+|---|---|---|
+| B-209 | kartice: 10 miliona objava, nasumični zastoji | PASS (G) |
+| B-218 | predaja / preuzimanje / povlačenje u isto vreme: tačno jedan pobednik | PASS (G) |
+| B-219 | ponovna upotreba kartica sa starim ručkama | PASS (G) |
+| B-210 | koordinator stoji (nit zaglavljena u planeru) ~46 s zvuka: 0 novih pesama, najduži poziv niti za mešanje 0,05 ms, tišina 44,5 s, posle povratka istorija istim redom | PASS (G) |
+| B-20, B-22, B-23/B-24, B-25, B-26, B-28, B-29, B-30 | planer | PASS (G) |
+| B-130 (uz B-135, B-136) | 0–4 dozvoljene pesme → plan 0,1,2,3,3; jedna se ponavlja, dve nikad zaredom; bez plana nema reda „Sledeća“ | PASS (G) |
+| B-131, B-133 (uz B-27), B-134 | licence i plan | PASS (G) |
+| B-80/B-82, B-83, B-84/B-85/B-87, B-86 | istorija kroz kartice | PASS (G) |
+| B-198, B-199 | pad oko kraja pesme; pretapanje = jedan red sa oba id | PASS (G) |
+| B-208 | tabela konačnog statusa, svih 11 redova, status + podvrsta + `prelaz_dostignut` za A i B | PASS (G) |
+| B-220 | ceo put sa padovima | PASS (G), **umanjen**: nasumični padovi po odsečcima rada, ne tačno u svakoj unutrašnjoj tački i ne 1.000 pretapanja |
+| B-195 | 3 napuštene + 1 zaglavljena aktivna nit, poseban proces | izmereno (G): privatna memorija +8,1 / +8,3 MB (dva pokretanja), niti 8 → 13. Procena je bila do 38 MB; granica od 3 niti ostaje. Lažni dekoder, ne Media Foundation. |
+| B-21 | Sledeća ×20 i dupli dodir | pokriveno testovima B-15 i B-83; poseban test nije pisan |
+| B-81 | glavna nit stoji 5 min, 60 pesama | NOT TESTED (nije napisan) |
+| B-132 | nestanu fajlovi svih ostalih pesama dok svira | NOT TESTED (nije napisan) |
+| G-sim | 4 scenarija: prazan izlaz 0; najduži korak 5–33 ms (pod opterećenjem 3 koraka > 20 ms, 0 > 50 ms); memorija na audio-niti 576 B; brave i dalje (B5) | G-sim, nije test na hardveru |
+| R, M | – | NOT TESTED / NOT TESTED – ACCEPTED RISK |
+
+Napomene: B-80 – `EventRing` ne postoji, test proverava 100 kratkih pesama uz zaustavljen pisar. B-133 – plan kaže „tekuća se završi“, a B-135 traži da se jedina pesma ponavlja; test proverava da povučene pesme nikad ne krenu. B-26 – izmena fajla posle otvaranja se ne otkriva (prihvaćeno). U radu bez posebne niti (testovi) pesma ne čeka potvrdu dnevnika (0 s); pravilo „potvrda ili 2 s“ proverava B-86 sa pravom niti.
+
+Ostaje otvoreno (nije PASS): B-149 i B-206 (G-sim), B-78 sa 200 pretapanja, B-223 (S5, S7, S8, G-sim) i B-120 (P, T, N2 u stvarnom vremenu) pre konačnog usvajanja pragova, B-196 i B-224 (B6), B-81 i B-132.
