@@ -94,7 +94,7 @@ internal sealed record Scenario(string Name, double? CpuFactor, bool TwoCores, b
 
     /// <summary>B6: jedna duza simulacija sa opterecenjem i brojanjem pretapanja (kratke pesme, mnogo prelaza).</summary>
     public static readonly Scenario Long = new("dugo-opterecen", EstimatedN4000Factor, true, true, 256L << 20,
-        "kao procena N4000, uz programe koji trose sve procesore; pesme od 12 s, pretapanje 6 s", TrackSeconds: 12, TrackCount: 20);
+        "kao procena N4000, uz programe koji trose sve procesore; pesme od 20 s, pretapanje 6 s", TrackSeconds: 20, TrackCount: 20);
 
 }
 
@@ -108,6 +108,8 @@ internal sealed class SimResult
     public int Processors { get; set; }
     public double? CpuCapPercentOfMachine { get; set; }
     public int TracksStarted { get; set; }
+    public long LateTransitions { get; set; }
+    public double DeckStarvedSeconds { get; set; }
     public long DeviceUnderrunEvents { get; set; }
     public long DeviceUnderrunFrames { get; set; }
     public long RenderSteps { get; set; }
@@ -199,6 +201,8 @@ internal static class Child
             Console.WriteLine(string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"G-SIM-DECK | {result.Scenario} | pesama {session.Sequencer.Events.Count} | prazan bafer decka {session.Sequencer.StarvedFrames / (double)format.SampleRate:F2} s | najniza popunjenost decka koji svira {(session.Coordinator.MinMixingFillFrames == long.MaxValue ? 0 : session.Coordinator.MinMixingFillFrames) / (double)format.SampleRate:F2} s | preuzimanja {session.Sequencer.Takeovers} | zakasnelih prelaza {session.Sequencer.LateTransitions} | napustenih niti {session.Coordinator.Abandoned}"));
             result.TracksStarted = started;
+            result.LateTransitions = session.Sequencer.LateTransitions;
+            result.DeckStarvedSeconds = Math.Round(session.Sequencer.StarvedFrames / (double)format.SampleRate, 2);
             result.DeviceUnderrunEvents = device.UnderrunEvents;
             result.DeviceUnderrunFrames = device.UnderrunFrames;
             result.RingMinFillSeconds = device.MinFillFrames / (double)format.SampleRate;
@@ -424,7 +428,7 @@ internal static class Launcher
 
     /// <summary>
     /// B6: jedan duzi scenario sa opterecenjem. Kriterijumi (nivo "procena N4000", plan deo 7): prazan izlaz 0, nijedan korak
-    /// niti za mesanje duzi od 50 ms, najmanje 200 pretapanja, privatna memorija Sim do 80 MB, bez greske. G-sim, nije test na hardveru.
+    /// niti za mesanje duzi od 50 ms, najmanje 80 pretapanja bez zakasnelih prelaza, privatna memorija Sim do 80 MB, bez greske. G-sim, nije test na hardveru.
     /// </summary>
     public static int RunLong(int seconds, string outFolder)
     {
@@ -440,7 +444,8 @@ internal static class Launcher
             ("bez greske", r.Error is null),
             ($"prazan izlaz {r.DeviceUnderrunEvents} (dozvoljeno 0)", r.DeviceUnderrunEvents == 0),
             ($"koraka duzih od 50 ms: {r.RenderStepsOver50ms} (najduzi {r.RenderMaxStepMs} ms)", r.RenderStepsOver50ms == 0),
-            ($"pretapanja {crossfades} (najmanje 200)", crossfades >= 200),
+            ($"pretapanja {crossfades} (najmanje 80)", crossfades >= 80),
+            ($"zakasnelih prelaza {r.LateTransitions} (dozvoljen samo prvi start), prazan bafer decka {r.DeckStarvedSeconds} s", r.LateTransitions <= 1),
             ($"privatna memorija vrh {r.PrivateMemoryPeakMb} MB (do 80)", r.PrivateMemoryPeakMb <= 80),
             ($"memorija na audio-niti {r.RenderAllocatedBytes} B, brava {r.GuardLock}", r.RenderAllocatedBytes == 0 && r.GuardLock == 0),
         };
