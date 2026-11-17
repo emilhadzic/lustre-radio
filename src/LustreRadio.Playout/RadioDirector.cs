@@ -14,6 +14,9 @@ public sealed record DirectorOptions
 {
     public double CrossfadeSeconds { get; init; } = 6;
 
+    /// <summary>Smart Crossfade (spec. 5.2): koristi analizu krajeva pesme kad postoji; inace obicno pretapanje.</summary>
+    public bool SmartCrossfade { get; init; } = true;
+
     /// <summary>Ulazak zvuka pri nastavku pesme posle restarta.</summary>
     public double ResumeFadeInSeconds { get; init; } = 3;
 
@@ -674,15 +677,33 @@ public sealed class RadioDirector : IPlanner
                     ? (long)Math.Round(record.ExactFrames * (double)_format.SampleRate / record.SampleRate)
                     : source.LengthFrames ?? 0;
                 long skip = 0;
+
+                // Smart Crossfade (spec. 5.2, signal 1): tisina na pocetku i kraju se ne pusta. Bez analize: cela pesma.
+                var smart = _options.SmartCrossfade && record.EdgesVersion > 0 && record.SampleRate > 0 && record.AudioEndFrame is not null && total > 0;
+                if (smart)
+                {
+                    total = Math.Min(total, (long)Math.Round(record.AudioEndFrame!.Value * (double)_format.SampleRate / record.SampleRate));
+                    if (startSeconds <= 0 && record.AudioStartFrame is long audioStart && audioStart > 0)
+                    {
+                        skip = Math.Min(total - 1, (long)Math.Round(audioStart * (double)_format.SampleRate / record.SampleRate));
+                    }
+                }
+
                 if (startSeconds > 0)
                 {
                     skip = _format.FramesFromSeconds(startSeconds);
+                }
+
+                if (skip > 0)
+                {
                     source.ResumeAt(skip);
                 }
 
-                ISampleSource shaped = total > 0 ? new ExactLengthSource(source, total - skip) : source;
+                ISampleSource shaped = total > 0 ? new ExactLengthSource(source, Math.Max(1, total - skip)) : source;
                 var gain = TrackGain.ToLinear(TrackGain.ComputeDb(record.Lufs, record.PeakDbfs, _options.Loudness));
-                return new QueuedTrack(id, shaped, gain);
+
+                // signal 2: pesma koja se sama stisava pretapa se tokom svog stisavanja (3-10 s); nagao kraj: obicno pretapanje
+                return new QueuedTrack(id, shaped, gain) { TransitionSeconds = smart ? record.OutroSeconds : null };
             }
             catch
             {

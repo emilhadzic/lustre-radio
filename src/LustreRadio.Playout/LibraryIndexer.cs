@@ -1,3 +1,4 @@
+using LustreRadio.Analysis;
 using LustreRadio.Core.Licensing;
 using LustreRadio.Data;
 using LustreRadio.Library;
@@ -33,7 +34,9 @@ public static class LibraryIndexer
 
         // Pesme skenirane pre nego sto je program umeo da meri glasnocu: izmeri ih sada.
         // (Fajl koji je sav tisina ostaje bez vrednosti i proverava se ponovo pri svakom skeniranju.)
-        var unmeasured = diff.Unchanged.Where(p => byPath[p] is { DecodeOk: true, Lufs: null }).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        // Isto za analizu krajeva (Smart Crossfade): pesme bez nje ili sa starijom verzijom se dekodiraju jos jednom.
+        var unmeasured = diff.Unchanged.Where(p => byPath[p] is { DecodeOk: true } t && (t.Lufs is null || t.EdgesVersion < EdgeAnalyzer.Version))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
         var measured = 0;
 
         foreach (var path in diff.New.Concat(diff.Changed).Concat(unmeasured))
@@ -60,9 +63,13 @@ public static class LibraryIndexer
                 DurationSeconds = scanned.DurationSeconds,
                 PeakDbfs = scanned.PeakDbfs,
                 Lufs = scanned.Lufs,
+                AudioStartFrame = scanned.Edges?.AudioStartFrame,
+                AudioEndFrame = scanned.Edges?.AudioEndFrame,
+                OutroSeconds = scanned.Edges?.OutroSeconds,
+                EdgesVersion = scanned.DecodeOk ? EdgeAnalyzer.Version : 0,
             });
 
-            if (scanned.Lufs is not null && unmeasured.Contains(path))
+            if (scanned.Lufs is not null && unmeasured.Contains(path) && byPath[path].Lufs is null)
             {
                 measured++;
             }

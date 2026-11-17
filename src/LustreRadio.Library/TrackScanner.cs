@@ -40,6 +40,9 @@ public sealed record ScannedFile
     /// <summary>Glasnoca programa (BS.1770) u LUFS; null za tisinu ili zvuk kraci od 400 ms.</summary>
     public double? Lufs { get; init; }
 
+    /// <summary>Krajevi pesme (Smart Crossfade); null ako analiza nije uradjena ili je fajl sav tisina.</summary>
+    public EdgeResult? Edges { get; init; }
+
     public string Title { get; init; } = string.Empty;
 
     public string Artist { get; init; } = string.Empty;
@@ -131,11 +134,13 @@ public static class TrackScanner
             long frames = 0;
             var peak = 0f;
             var loudness = new LoudnessMeter(sourceRate);
+            var edges = new EdgeAnalyzer(sourceRate);
             int read;
             while ((read = source.Read(buffer)) > 0)
             {
                 frames += read;
                 loudness.Add(buffer.AsSpan(0, read * 2));
+                edges.Add(buffer.AsSpan(0, read * 2));
                 foreach (var sample in buffer.AsSpan(0, read * 2))
                 {
                     var magnitude = Math.Abs(sample);
@@ -161,6 +166,7 @@ public static class TrackScanner
                 DurationSeconds = frames / (double)sourceRate,
                 PeakDbfs = peak > 0 ? 20 * Math.Log10(peak) : null,
                 Lufs = loudness.IntegratedLufs(),
+                Edges = edges.Result(),
             };
         }
         catch (Exception ex)

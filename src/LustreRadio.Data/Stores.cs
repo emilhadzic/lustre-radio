@@ -53,6 +53,18 @@ public sealed record TrackRecord
 
     public double? Bpm { get; init; }
 
+    /// <summary>Prvi frejm koji se cuje (sample rate fajla); null ako analiza krajeva nije uradjena.</summary>
+    public long? AudioStartFrame { get; init; }
+
+    /// <summary>Frejm posle poslednjeg koji se cuje (sample rate fajla).</summary>
+    public long? AudioEndFrame { get; init; }
+
+    /// <summary>Duzina stisavanja na kraju (s); null = nagao kraj ili nije analizirano.</summary>
+    public double? OutroSeconds { get; init; }
+
+    /// <summary>Verzija analize krajeva; 0 = nije analizirano.</summary>
+    public int EdgesVersion { get; init; }
+
     public bool Favorite { get; init; }
 
     public bool Blocked { get; init; }
@@ -81,11 +93,14 @@ public sealed class TrackStore
         return _db.Scalar<long>(
             """
             INSERT INTO tracks (path, content_hash, size_bytes, last_write_utc, title, artist, album, genres, kind, decoder_id,
-                                decode_ok, decode_error, sample_rate, channels, exact_frames, duration_seconds, peak_dbfs, lufs, added_utc)
+                                decode_ok, decode_error, sample_rate, channels, exact_frames, duration_seconds, peak_dbfs, lufs,
+                                audio_start_frames, audio_end_frames, outro_seconds, edges_version, added_utc)
             VALUES ($path, $hash, $size, $write, $title, $artist, $album, $genres, $kind, $decoder,
-                    $ok, $error, $rate, $channels, $frames, $duration, $peak, $lufs, $added)
+                    $ok, $error, $rate, $channels, $frames, $duration, $peak, $lufs, $astart, $aend, $outro, $ev, $added)
             ON CONFLICT(path) DO UPDATE SET
                 lufs = COALESCE(excluded.lufs, CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.lufs ELSE NULL END),
+                audio_start_frames = excluded.audio_start_frames, audio_end_frames = excluded.audio_end_frames,
+                outro_seconds = excluded.outro_seconds, edges_version = excluded.edges_version,
                 bpm = CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.bpm ELSE NULL END,
                 fault_count = CASE WHEN tracks.content_hash = excluded.content_hash THEN tracks.fault_count ELSE 0 END,
                 content_hash = excluded.content_hash, size_bytes = excluded.size_bytes, last_write_utc = excluded.last_write_utc,
@@ -101,6 +116,7 @@ public sealed class TrackStore
             ("$kind", track.Kind), ("$decoder", track.DecoderId), ("$ok", track.DecodeOk ? 1 : 0), ("$error", track.DecodeError),
             ("$rate", track.SampleRate), ("$channels", track.Channels), ("$frames", track.ExactFrames),
             ("$duration", track.DurationSeconds), ("$peak", track.PeakDbfs), ("$lufs", track.Lufs),
+            ("$astart", track.AudioStartFrame), ("$aend", track.AudioEndFrame), ("$outro", track.OutroSeconds), ("$ev", track.EdgesVersion),
             ("$added", Db.Iso(track.AddedUtc == default ? DateTime.UtcNow : track.AddedUtc)));
     }
 
@@ -156,6 +172,10 @@ public sealed class TrackStore
         PeakDbfs = r.Real("peak_dbfs"),
         Lufs = r.Real("lufs"),
         Bpm = r.Real("bpm"),
+        AudioStartFrame = r.OptionalLong("audio_start_frames"),
+        AudioEndFrame = r.OptionalLong("audio_end_frames"),
+        OutroSeconds = r.OptionalReal("outro_seconds"),
+        EdgesVersion = (int)(r.OptionalLong("edges_version") ?? 0),
         Favorite = r.Flag("favorite"),
         Blocked = r.Flag("blocked"),
         FaultCount = (int)r.Long("fault_count"),

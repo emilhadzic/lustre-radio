@@ -103,4 +103,13 @@ internal static class Schema
         UPDATE play_history SET status = 'stari_zapis';
         PRAGMA user_version=2;
         """;
+
+    /// <summary>Kolone za analizu krajeva pesme (Smart Crossfade); dodaju se pri otvaranju ako ne postoje.</summary>
+    public static readonly (string Name, string Type)[] AdditiveTrackColumns =
+    [
+        ("audio_start_frames", "INTEGER"),
+        ("audio_end_frames", "INTEGER"),
+        ("outro_seconds", "REAL"),
+        ("edges_version", "INTEGER NOT NULL DEFAULT 0"),
+    ];
 }

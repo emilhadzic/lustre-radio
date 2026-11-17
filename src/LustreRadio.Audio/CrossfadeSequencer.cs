@@ -13,6 +13,9 @@ public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1
 
     /// <summary>Putanja fajla (za probu diska sa istog volumena).</summary>
     public string? Path { get; init; }
+
+    /// <summary>Smart Crossfade: duzina pretapanja kad ova pesma izlazi (s). null = obicno pretapanje.</summary>
+    public double? TransitionSeconds { get; init; }
 }
 
 /// <summary>Zapis o tome sta je i kada pusteno (pozicija u izlaznom toku, u frejmovima).</summary>
@@ -394,12 +397,13 @@ public sealed class CrossfadeSequencer : IFrameProvider
 
     private int PlanTransition(int chunk)
     {
-        if (_transition || _crossfadeFrames <= 0 || _current.Starved || _current.RemainingFrames is not long remaining)
+        var fade = _current.TransitionFrames;
+        if (_transition || _crossfadeFrames <= 0 || fade <= 0 || _current.Starved || _current.RemainingFrames is not long remaining)
         {
             return chunk;
         }
 
-        var untilTransition = remaining - _crossfadeFrames;
+        var untilTransition = remaining - fade;
         if (untilTransition > 0)
         {
             return (int)Math.Min(chunk, untilTransition);
@@ -422,7 +426,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
             Interlocked.Increment(ref _lateTransitions); // skraceno pretapanje
         }
 
-        BeginTransition(Math.Max(1, Math.Min(_crossfadeFrames, remaining)));
+        BeginTransition(Math.Max(1, Math.Min(fade, remaining)));
         return chunk;
     }
 
@@ -569,6 +573,7 @@ public sealed class CrossfadeSequencer : IFrameProvider
         Volatile.Write(ref _published, slot + 1); // objava: citalac koji vidi broj vidi i polja
 
         deck.Load(item.Source, item.Track.Gain);
+        deck.TransitionFrames = item.Track.TransitionSeconds is double seconds && seconds > 0 ? Format.FramesFromSeconds(seconds) : _crossfadeFrames;
         deck.StartFadeIn(fadeInFrames, fadeStart);
         return true;
     }

@@ -238,6 +238,7 @@ public sealed class LustreDatabase : IDisposable
                 Execute(Schema.Version1);
                 Execute(Schema.Upgrade1To2);
             });
+            EnsureAdditiveColumns();
             return;
         }
 
@@ -245,6 +246,24 @@ public sealed class LustreDatabase : IDisposable
         {
             // Postojeca baza se nadogradjuje samo kroz DatabaseStartup: kopija, provera, pa nadogradnja.
             throw new SchemaUpgradeRequiredException(version);
+        }
+
+        EnsureAdditiveColumns();
+    }
+
+    /// <summary>
+    /// Kolone koje samo dodaju podatke (rezultati analize, LUSTRE RADIO FINAL). Prazne su dok analiza ne prodje;
+    /// postojeci podaci se ne menjaju, pa verzija seme ostaje ista.
+    /// </summary>
+    private void EnsureAdditiveColumns()
+    {
+        var existing = Query("PRAGMA table_info(tracks)", r => r.GetString(1)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var (name, type) in Schema.AdditiveTrackColumns)
+        {
+            if (!existing.Contains(name))
+            {
+                Execute($"ALTER TABLE tracks ADD COLUMN {name} {type}");
+            }
         }
     }
 }
@@ -274,6 +293,32 @@ internal static class Db
     {
         var ordinal = reader.GetOrdinal(column);
         return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
+    }
+
+    public static long? OptionalLong(this SqliteDataReader reader, string column)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(reader.GetName(i), column, StringComparison.OrdinalIgnoreCase))
+            {
+                return reader.IsDBNull(i) ? null : reader.GetInt64(i);
+            }
+        }
+
+        return null;
+    }
+
+    public static double? OptionalReal(this SqliteDataReader reader, string column)
+    {
+        for (var i = 0; i < reader.FieldCount; i++)
+        {
+            if (string.Equals(reader.GetName(i), column, StringComparison.OrdinalIgnoreCase))
+            {
+                return reader.IsDBNull(i) ? null : reader.GetDouble(i);
+            }
+        }
+
+        return null;
     }
 
     public static long Long(this SqliteDataReader reader, string column) => reader.GetInt64(reader.GetOrdinal(column));

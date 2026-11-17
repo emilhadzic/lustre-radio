@@ -44,6 +44,9 @@ public sealed class Deck
     /// <summary>Duzina ulaza posle praznog bafera i preuzimanja (50 ms).</summary>
     public long RampFrames { get; set; }
 
+    /// <summary>Duzina pretapanja kad ova pesma izlazi (Smart Crossfade: prema stisavanju na kraju pesme).</summary>
+    public long TransitionFrames { get; set; }
+
     /// <summary>Broj frejmova procitanih iz izvora.</summary>
     public long Position { get; private set; }
 
