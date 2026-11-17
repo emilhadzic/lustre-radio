@@ -7,6 +7,7 @@ Licence: prihvata CC0, javno dobro, CC BY, CC BY-SA. NC, ND i bez licence se odb
 Samo standardna Python biblioteka.
 """
 import csv
+import http.client
 import json
 import os
 import re
@@ -18,6 +19,7 @@ import urllib.request
 from collections import Counter, defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
+http.client._MAXLINE = 10_000_000  # ccMixter salje vrlo dugacka zaglavlja
 UA = "LustreRadio-Faza1-merenje/1.0 (katalog; github.com/emilhadzic/lustre-radio)"
 OUT = os.environ.get("OUT", "izlaz")
 MAX_IA_ITEMS = int(os.environ.get("MAX_IA_ITEMS", "6000"))
@@ -26,18 +28,20 @@ MIN_KBPS = 192                       # osnovni filter za MP3; lossless uvek prol
 
 # Zanrovi koncepta -> kljucne reci (male slova, trazi se u oznakama/nazivu)
 GENRES = {
-    "lounge": ["lounge", "bossa", "lounge music", "cafe"],
+    "lounge": ["lounge", "bossa nova", "bossa"],
     "deep house": ["deep house", "deephouse", "deep-house"],
-    "organic house": ["organic house", "organic", "afro house", "ethnic house"],
-    "melodic house": ["melodic house", "melodic techno", "progressive house"],
-    "chillout": ["chillout", "chill out", "chill-out", "chill", "chillwave", "balearic"],
-    "downtempo": ["downtempo", "down tempo", "trip hop", "trip-hop", "triphop", "lo-fi", "lofi"],
-    "jazz / nu jazz": ["jazz", "nu jazz", "nu-jazz", "jazzy", "acid jazz", "electro swing"],
-    "soft electronic": ["electronica", "idm", "ambient pop", "minimal", "dub"],
-    "instrumental": ["instrumental", "piano", "guitar"],
-    "house (ostalo)": ["house"],
+    "organic house": ["organic house", "afro house"],
+    "melodic house": ["melodic house", "progressive house"],
+    "chillout": ["chillout", "chill out", "chill-out", "chill", "balearic"],
+    "downtempo": ["downtempo", "down tempo", "trip hop", "trip-hop", "triphop"],
+    "jazz / nu jazz": ["jazz", "nu jazz", "nu-jazz", "jazzy", "acid jazz"],
+    # sire grupe: prijavljuju se odvojeno, NE ulaze u glavni zbir
+    "soft electronic (sire)": ["electronica", "ambient pop"],
+    "instrumental (sire)": ["instrumental"],
+    "house ostalo (sire)": ["house"],
 }
 CONCEPT = list(GENRES)
+CORE = [g for g in GENRES if "(sire)" not in g]
 
 
 def http_json(url, tries=4):
@@ -94,8 +98,8 @@ def genres_of(text):
             if re.search(r"(?<![a-z])" + re.escape(k) + r"(?![a-z])", t):
                 found.append(g)
                 break
-    if "house (ostalo)" in found and any(g in found for g in ("deep house", "organic house", "melodic house")):
-        found.remove("house (ostalo)")
+    if "house ostalo (sire)" in found and any(g in found for g in ("deep house", "organic house", "melodic house")):
+        found.remove("house ostalo (sire)")
     return found
 
 
@@ -206,7 +210,7 @@ def cc_search():
         offset = 0
         while True:
             url = ("https://ccmixter.org/api/query?" + urllib.parse.urlencode(
-                {"f": "json", "tags": tag, "limit": 200, "offset": offset, "type": "any"}))
+                {"f": "json", "tags": tag, "limit": 100, "offset": offset, "type": "any"}))
             d = http_json(url)
             if not d:
                 break
@@ -222,9 +226,9 @@ def cc_search():
                 seen.add(uid)
                 raw.append(r)
             print(f"ccMixter '{tag}': offset {offset}, ukupno jedinstvenih {len(raw)}", flush=True)
-            if len(d) < 200:
+            if len(d) < 100:
                 break
-            offset += 200
+            offset += 100
             time.sleep(0.5)
     return raw
 
@@ -271,7 +275,7 @@ def main():
     ok_items = [i for i in ia_items if license_class(i.get("licenseurl")) in ALLOWED]
     stats["ia_izdanja_dozvoljena_licenca"] = len(ok_items)
     concept_items = [i for i in ok_items
-                     if genres_of(as_text(i.get("subject")) + " " + as_text(i.get("title")))]
+                     if genres_of(as_text(i.get("subject")))]
     stats["ia_izdanja_dozvoljena_i_zanr"] = len(concept_items)
     concept_items.sort(key=lambda i: -float(i.get("downloads") or 0))
     if len(concept_items) > MAX_IA_ITEMS:
@@ -299,7 +303,8 @@ def main():
     for t in tracks:
         lc = license_class(t["licenca_url"])
         t["licenca"] = lc
-        t["zanrovi"] = genres_of(t["oznake"] + " " + t["naslov"] + " " + t["izdanje"])
+        t["zanrovi"] = genres_of(t["oznake"])
+        t["izdanje_id"] = t["id"].split("/")[0] if t["izvor"] == "Internet Archive" else "cc:" + t["id"]
         if lc not in ALLOWED:
             rejected["licenca"] += 1
             continue
@@ -331,27 +336,36 @@ def main():
     stats["duplikata_uklonjeno"] = len(passed) - len(uniq)
     stats["odbijeno_po_razlogu"] = dict(rejected)
 
-    by_src = Counter(t["izvor"] for t in uniq)
-    by_genre = Counter(g for t in uniq for g in t["zanrovi"])
-    durs = [t["trajanje"] for t in uniq]
-    fmt = Counter(f for t in uniq for f in t["formati"].split("+"))
-    lic = Counter(t["licenca"] for t in uniq)
-    artists = len({norm(t["izvodjac"]) for t in uniq})
+    core = [t for t in uniq if any(g in CORE for g in t["zanrovi"])]
+    core_ids = {id(t) for t in core}
+    wide = [t for t in uniq if id(t) not in core_ids]
+    by_src = Counter(t["izvor"] for t in core)
+    durs = [t["trajanje"] for t in core]
+    fmt = Counter(f for t in core for f in t["formati"].split("+"))
+    lic = Counter(t["licenca"] for t in core)
+    artists = len({norm(t["izvodjac"]) for t in core})
+    rel_count = Counter(t["izdanje_id"] for t in core)
+    # procena bez dominacije kompilacija: najvise 5 pesama po izdanju
+    capped = sum(min(n, 5) for n in rel_count.values())
 
-    # --- uzorak: po zanru najpopularniji, najvise 1 pesma po izvodjacu
-    sample, used_art, used_id = [], set(), set()
-    for g in CONCEPT:
-        cand = sorted([t for t in uniq if g in t["zanrovi"]], key=lambda t: -t["popularnost"])
+    def gstat(g, pool):
+        ts = [t for t in pool if g in t["zanrovi"]]
+        return len(ts), len({t["izdanje_id"] for t in ts}), len({norm(t["izvodjac"]) for t in ts})
+
+    # --- uzorak: glavni zanrovi, najvise 1 pesma po izvodjacu i po izdanju
+    sample, used_art, used_rel = [], set(), set()
+    for g in CORE:
+        cand = sorted([t for t in core if g in t["zanrovi"]], key=lambda t: -t["popularnost"])
         k = 0
         for t in cand:
             a = norm(t["izvodjac"])
-            if a in used_art or t["id"] in used_id:
+            if a in used_art or t["izdanje_id"] in used_rel:
                 continue
             sample.append((g, t))
             used_art.add(a)
-            used_id.add(t["id"])
+            used_rel.add(t["izdanje_id"])
             k += 1
-            if k >= 5:
+            if k >= 6:
                 break
 
     cols = ["izvor", "izvodjac", "naslov", "izdanje", "zanrovi", "licenca", "trajanje", "formati", "kbps",
@@ -359,7 +373,7 @@ def main():
     with open(os.path.join(OUT, "upotrebljive_pesme.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
         w.writerow(cols)
-        for t in sorted(uniq, key=lambda t: -t["popularnost"]):
+        for t in sorted(core, key=lambda t: -t["popularnost"]):
             w.writerow([("|".join(t[c]) if isinstance(t[c], list) else t[c]) for c in cols])
     with open(os.path.join(OUT, "uzorak.csv"), "w", newline="") as fh:
         w = csv.writer(fh)
@@ -373,35 +387,41 @@ def main():
     L = ["# Faza 1 - merenje kataloga", "", f"Vreme: {time.strftime('%Y-%m-%d %H:%M UTC', time.gmtime())}", "",
          "## Pretraga (ovo NISU upotrebljive pesme)", "",
          f"- Internet Archive, netlabels, audio izdanja u pretrazi: {stats['ia_rezultati_pretrage']}",
+         f"- IA izdanja po licenci: {stats['ia_izdanja_po_licenci']}",
          f"- od toga sa dozvoljenom licencom: {stats['ia_izdanja_dozvoljena_licenca']}",
-         f"- od toga sa zanrom koncepta: {stats['ia_izdanja_dozvoljena_i_zanr']}",
+         f"- od toga sa zanrom u oznakama: {stats['ia_izdanja_dozvoljena_i_zanr']}",
          f"- audio snimaka u tim izdanjima: {stats['ia_audio_snimaka_u_tim_izdanjima']}",
          f"- {stats.get('ia_napomena', 'pregledana sva takva izdanja')}",
-         f"- IA izdanja po licenci: {stats['ia_izdanja_po_licenci']}",
-         f"- ccMixter jedinstvenih unosa za oznake {', '.join(CC_TAGS)}: {stats['cc_rezultati_pretrage']}",
+         f"- ccMixter jedinstvenih unosa za oznake ({', '.join(CC_TAGS)}): {stats['cc_rezultati_pretrage']}",
          f"- ccMixter po licenci: {stats['cc_po_licenci']}", "",
-         "## Upotrebljive pesme (prosle filtere, bez duplikata)", "",
-         f"- UKUPNO: **{len(uniq)}** (izvodjaca: {artists})",
-         f"- po izvoru: {dict(by_src)}",
+         "## Prosli osnovne filtere (licenca, trajanje 2:30-10:00, kvalitet), bez duplikata", "",
          f"- odbijeno: {stats['odbijeno_po_razlogu']}",
          f"- duplikata uklonjeno: {stats['duplikata_uklonjeno']}",
-         f"- po licenci: {dict(lic)}", "",
-         "## Po zanru (pesma moze imati vise zanrova)", ""]
+         f"- GLAVNI ZANROVI KONCEPTA: **{len(core)}** pesama, {len(rel_count)} izdanja, {artists} izvodjaca",
+         f"- isto, ali najvise 5 pesama po izdanju (bez naduvavanja kompilacijama): **{capped}**",
+         f"- samo sire grupe (soft electronic / instrumental / house), van glavnog zbira: {len(wide)}",
+         f"- po izvoru (glavni): {dict(by_src)}",
+         f"- po licenci (glavni): {dict(lic)}", "",
+         "## Po zanru: pesme / izdanja / izvodjaci (pesma moze imati vise zanrova)", ""]
     for g in CONCEPT:
-        L.append(f"- {g}: {by_genre.get(g, 0)}")
+        n, r, ar = gstat(g, uniq)
+        L.append(f"- {g}: {n} / {r} / {ar}")
+    L += ["", "## Izdanja sa najvise pesama (glavni zanrovi)", ""]
+    for rid, n in rel_count.most_common(10):
+        L.append(f"- {rid}: {n}")
     if durs:
         durs.sort()
-        L += ["", "## Trajanje i formati", "",
+        L += ["", "## Trajanje i formati (glavni)", "",
               f"- prosek {mmss(sum(durs) / len(durs))}, medijana {mmss(durs[len(durs) // 2])}",
-              f"- formati: {dict(fmt)}"]
-    L += ["", "## Uzorak za preslusavanje", ""]
+              f"- formati (snimak moze imati vise): {dict(fmt)}"]
+    L += ["", "## Uzorak za preslusavanje (1 pesma po izvodjacu i izdanju)", ""]
     for g, t in sample:
-        L.append(f"- [{g}] {t['izvodjac']} - {t['naslov']} ({mmss(t['trajanje'])}, {t['licenca']}, {t['izvor']}) {t['slusaj']}")
+        L.append(f"- [{g}] {t['izvodjac']} - {t['naslov']} ({mmss(t['trajanje'])}, {t['licenca']}, {t['izvor']}) {t['slusaj']} | {t['fajl']}")
     rep = "\n".join(L) + "\n"
     with open(os.path.join(OUT, "izvestaj.md"), "w") as fh:
         fh.write(rep)
     with open(os.path.join(OUT, "brojevi.json"), "w") as fh:
-        json.dump({**stats, "upotrebljivo": len(uniq), "po_izvoru": by_src, "po_zanru": by_genre,
+        json.dump({**stats, "glavni": len(core), "glavni_max5_po_izdanju": capped, "po_izvoru": by_src,
                    "formati": fmt, "po_licenci": lic, "izvodjaca": artists}, fh, indent=1, default=dict)
     print(rep)
     if os.environ.get("GITHUB_STEP_SUMMARY"):
