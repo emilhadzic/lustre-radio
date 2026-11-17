@@ -367,7 +367,8 @@ public sealed class StallTests(ITestOutputHelper output)
         };
         coordinator.Start();
         var watch = System.Diagnostics.Stopwatch.StartNew();
-        while (!pipeSource.Disposed && watch.Elapsed < TimeSpan.FromSeconds(15))
+        // nit moze da se oslobodi (CancelSynchronousIo) pre nego sto koordinator upise da ju je napustio: ceka se oboje
+        while ((!pipeSource.Disposed || coordinator.Abandoned < 1) && watch.Elapsed < TimeSpan.FromSeconds(15))
         {
             Thread.Sleep(20);
         }

@@ -130,21 +130,29 @@ public sealed class TempoAnalyzer
         var denom = ac[bestLag - 1] - (2 * ac[bestLag]) + ac[bestLag + 1];
         var period = bestLag + (Math.Abs(denom) > 1e-12 ? 0.5 * (ac[bestLag - 1] - ac[bestLag + 1]) / denom : 0);
 
-        // 2. faza: pocetak mreze sa najvise jakih pocetaka
+        // 2. razmak i faza zajedno: autokorelacija je gruba (do ~0,2 %), pa se razmak dotera u koracima od 0,05 %
+        //    (+-1 %) uz fazu sa najvise jakih pocetaka na mrezi kroz celu pesmu
+        var coarse = period;
         var bestPhase = 0;
         double bestPhaseScore = double.MinValue;
-        for (var phase = 0; phase < (int)Math.Ceiling(period); phase++)
+        for (var step = -20; step <= 20; step++)
         {
-            double sum = 0;
-            for (var t = (double)phase; t < n; t += period)
+            var p = coarse * (1 + (step * 0.0005));
+            for (var phase = 0; phase < (int)Math.Ceiling(p); phase++)
             {
-                sum += env[(int)t];
-            }
+                double sum = 0;
+                for (var t = (double)phase; t < n - 1; t += p)
+                {
+                    var i = (int)t;
+                    sum += Math.Max(env[i], env[i + 1]);
+                }
 
-            if (sum > bestPhaseScore)
-            {
-                bestPhaseScore = sum;
-                bestPhase = phase;
+                if (sum > bestPhaseScore)
+                {
+                    bestPhaseScore = sum;
+                    bestPhase = phase;
+                    period = p;
+                }
             }
         }
 
