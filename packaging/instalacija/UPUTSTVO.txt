@@ -1,39 +1,71 @@
-LUSTRE RADIO - instalacija na mini PC u Caffe Lustreu
+LUSTRE RADIO - uputstvo za instalaciju i rad (Caffe Lustre)
 
-PRE INSTALACIJE (jednom, podesavanja Windows-a)
-1. Nalog: prijavite se nalogom pod kojim ce radio raditi (preporuka: poseban standardni nalog
-   "LustreRadio" sa automatskom prijavom). Radio radi samo dok je taj nalog prijavljen.
-2. Napajanje: Settings -> System -> Power -> Screen i Sleep: "Never" (racunar ne sme da zaspi).
-3. BIOS (ako postoji): "Restore on AC Power Loss" = On, da se racunar sam upali posle nestanka struje.
-4. Zvucnik: Bluetooth zvucnik upariti; u Sound podesavanjima koristiti "Stereo", ne "Hands-Free".
-   Taj zvucnik postaviti kao podrazumevani izlaz. Sistemsku glasnocu staviti na 100% i ne dirati je.
-5. Sistemski zvuci: Sound -> More sound settings -> Sounds -> "No Sounds".
-6. Windows Update: Active hours postaviti na radno vreme lokala (npr. 07:00-23:59).
+VAZNO: program jos nije proveren slusanjem ni na mini PC-ju u lokalu. Pre redovnog rada
+uradite zavrsnu probu (deo "ZAVRSNA PROBA" na kraju).
 
-INSTALACIJA
-1. Raspakujte ceo ZIP u neki folder (npr. Downloads). Ne pokrecite iz ZIP-a.
-2. Dvoklik na INSTALIRAJ.cmd. Ako Windows pita "Windows protected your PC": More info -> Run anyway.
-   Program se kopira u vas korisnicki folder i pravi se zadatak za automatsko pokretanje.
-3. Otvara se ekran LUSTRE RADIO. Dole desno: Admin.
-   - prvi put postavite PIN (4 do 8 cifara, dvaput);
-   - Muzika -> Dodaj folder -> izaberite folder sa pesmama (najbolje na disku C:);
-   - Licenca -> "Izjavljujem da placam SOKOJ i OFPS";
-   - Zakljucaj.
-4. Muzika krece sama u radno vreme (07:00 - 23:30) i stisava se u 23:30.
+1. PRE INSTALACIJE (jednom, podesavanja Windows-a na mini PC-ju)
+   - Nalog: prijavite se nalogom pod kojim ce radio raditi (preporuka: poseban standardni nalog
+     "LustreRadio" sa automatskom prijavom). Radio radi samo dok je taj nalog prijavljen.
+   - Napajanje: Settings -> System -> Power -> ekran i spavanje: "Never".
+   - BIOS (ako postoji): "Restore on AC Power Loss" = On (racunar se sam upali posle nestanka struje).
+   - Zvucnik: Bluetooth zvucnik upariti; koristiti "Stereo", ne "Hands-Free"; postaviti ga kao
+     podrazumevani izlaz. Sistemska glasnoca 100% i ne dirati je.
+   - Sistemski zvuci: Sound -> More sound settings -> Sounds -> "No Sounds".
+   - Windows Update: Active hours = radno vreme lokala (npr. 07:00-23:59).
 
-SVAKODNEVNO
-- Nista ne treba raditi. Posle paljenja racunara i prijave, radio i ekran se pokrecu sami.
-- Ako se ekran zatvori, sam se vraca za najvise pola minuta. Muzika ne staje kad se ekran zatvori.
-- Ako se audio program srusi, nadzor ga vraca za nekoliko sekundi.
+2. INSTALACIJA
+   - Raspakujte ceo ZIP u neki folder (npr. Downloads). Ne pokrecite iz ZIP-a.
+   - Dvoklik na INSTALIRAJ.cmd. Ako Windows pita "Windows protected your PC": More info -> Run anyway.
+     Ne trazi administratorska prava. Program ide u %LOCALAPPDATA%\Programs\LustreRadio,
+     podaci (baza, istorija, najave, kopije) u C:\ProgramData\LustreRadio.
+   - Dvoklik na ZASTITNI-ZID.cmd (jednom). Windows pita za administratorsku dozvolu: Yes.
+     Radio i nadzor time nemaju pristup mrezi (zastita).
+   - Otvara se ekran LUSTRE RADIO. Dole desno: Admin.
+       * prvi put postavite PIN (4 do 8 cifara, dvaput);
+       * Muzika -> Dodaj folder -> folder sa pesmama (najbolje na disku C:);
+       * Licenca -> "Izjavljujem da placam SOKOJ i OFPS";
+       * Zakljucaj.
+   - Muzika krece sama u radno vreme (07:00 - 23:30) i stisava se u 23:30.
+   - Posle prve instalacije radio jednom u pozadini analizira sve pesme (pocetak, kraj, tempo).
+     Muzika za to vreme svira normalno; pametni prelazi (Smart, DJ Mix) rade za pesme koje su gotove.
 
-NADOGRADNJA NA NOVU VERZIJU
-- Raspakujte novu verziju i ponovo pokrenite INSTALIRAJ.cmd. Baza, pesme i podesavanja ostaju.
+3. SVAKODNEVNO
+   - Nista ne treba raditi. Posle paljenja racunara i prijave, radio i ekran se pokrecu sami.
+   - Pusti / Pauza / Sledeca / glasnoca na ekranu. Pauza se sama prekida posle 15 minuta.
+   - Ako se ekran zatvori, sam se vraca za najvise pola minuta. Muzika ne staje kad se ekran zatvori.
+   - Ako se audio program srusi, nadzor ga vraca za nekoliko sekundi.
+   - Prelazi: Smart (bez tisine izmedju pesama; pesma koja se stisava pretapa se tokom stisavanja) i
+     DJ Mix (samo za pesme stalnog tempa sa skoro istim tempom: udarac na udarac). Ostalo: obican prelaz.
 
-ZAUSTAVLJANJE I UKLANJANJE
-- Privremeno zaustavljanje: u folderu %LOCALAPPDATA%\Programs\LustreRadio dvoklik na ZAUSTAVI.cmd
-  (do sledeceg pokretanja racunara ili do POKRENI.cmd).
-- Uklanjanje: DEINSTALIRAJ.cmd. Podaci ostaju u C:\ProgramData\LustreRadio.
+4. NAJAVE (Admin -> Najave)
+   - Najava se pravi u servisu za glas (ElevenLabs ili Azure) i uvozi kao fajl: Uvezi najavu ->
+     izaberite fajl -> upisite tekst, vrstu, jezik, glas i podatke licence (servis, model i glas,
+     placeni plan, broj fakture, datum, gde je sacuvan snimak uslova koriscenja).
+   - Najava sa potpunom licencom moze da se odobri (Odobri). U eter ide samo odobrena i ukljucena.
+   - Najava nikad ne prekida pesmu: ide posle prirodnog kraja pesme. Kratka najava na 45-60 min,
+     duza na 2-3 sata, najvise 2 na sat, ne u prvih i poslednjih 10 minuta radnog vremena.
+   - Snimci sa besplatnih planova servisa NE smeju u eter (samo za probu).
 
-AKO NESTO NE RADI
-- Admin -> Provera sistema pokazuje stanje.
-- Dnevnici: C:\ProgramData\LustreRadio\logs - posaljite ih.
+5. KOPIJA BAZE
+   - Svake noci posle 03:30 radio sam pravi proverenu kopiju baze u C:\ProgramData\LustreRadio\backups
+     (nocna-GGGGMMDD.db, cuva se 14 poslednjih). Ako je racunar bio ugasen, kopija se pravi kad se upali.
+   - Preporuka: jednom mesecno kopirajte folder backups na USB.
+
+6. NADOGRADNJA NA NOVU VERZIJU
+   - Raspakujte novu verziju i ponovo pokrenite INSTALIRAJ.cmd. Baza, istorija, najave, pesme i
+     podesavanja ostaju.
+
+7. ZAUSTAVLJANJE I UKLANJANJE
+   - Privremeno: u %LOCALAPPDATA%\Programs\LustreRadio dvoklik na ZAUSTAVI.cmd (do sledeceg paljenja
+     racunara ili do POKRENI.cmd).
+   - Uklanjanje: DEINSTALIRAJ.cmd, pa ZASTITNI-ZID.cmd ukloni. Podaci ostaju u C:\ProgramData\LustreRadio.
+
+8. AKO NESTO NE RADI
+   - Admin -> Provera sistema pokazuje stanje.
+   - Dnevnici: C:\ProgramData\LustreRadio\logs - posaljite ih.
+
+ZAVRSNA PROBA (pre redovnog rada u lokalu)
+   - 30 minuta slusanja na mini PC-ju sa Bluetooth zvucnikom i ukljucenom kasom: bez prekida i
+     pucketanja; 20 prelaza ocenjenih 1-5 (cilj bar 4).
+   - Pauza/Sledeca/glasnoca; zatvaranje ekrana; restart racunara; zvucnik ugasen 30 s pa upaljen.
+   - Jedna najava (posle izbora servisa i placenog plana).

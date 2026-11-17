@@ -1,4 +1,5 @@
 using LustreRadio.Core.Voice;
+using LustreRadio.Data;
 using Xunit;
 using Xunit.Abstractions;
 

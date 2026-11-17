@@ -49,6 +49,11 @@ public sealed class EngineHost : IDisposable, IRadioControl
     /// <summary>Biblioteka najava (spec. 15).</summary>
     public VoiceLibrary? Voice { get; private set; }
 
+    /// <summary>Nocna kopija baze (FINAL, korak 4).</summary>
+    public NightlyBackup? Backup { get; private set; }
+
+    private int _backupRunning;
+
     public const string MusicFoldersKey = "music-folders";
     public const string VolumeKey = "volume";
 
@@ -176,6 +181,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
 
         _director = new RadioDirector(Database, new SystemClock(), _format, new Random(), _options.Director, _log, History);
         _director.BeforeOpen = _options.BeforeOpenFile;
+        Backup = new NightlyBackup(Database, Path.Combine(_options.DataRoot, BackupsFolder), _log);
         Voice = new VoiceLibrary(Database, Path.Combine(_options.DataRoot, Core.AppPaths.Voice));
         _director.Voice = Voice;
         if (_options.AlwaysOpen)
@@ -492,6 +498,23 @@ public sealed class EngineHost : IDisposable, IRadioControl
             }
 
             Publish();
+            if (Backup is { } backup && Volatile.Read(ref _backupRunning) == 0 && backup.Due(DateTime.Now))
+            {
+                // van glavne petlje i van audio-niti; baza je zakljucana samo dok traje kopiranje stranica
+                Interlocked.Exchange(ref _backupRunning, 1);
+                _ = Task.Run(() =>
+                {
+                    try
+                    {
+                        backup.Run(DateTime.Now);
+                    }
+                    finally
+                    {
+                        Interlocked.Exchange(ref _backupRunning, 0);
+                    }
+                });
+            }
+
             _stop.Wait(TimeSpan.FromSeconds(1));
         }
     }
