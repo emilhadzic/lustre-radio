@@ -19,6 +19,9 @@ public sealed class PlannedItem
 
     public string? Program { get; init; }
 
+    /// <summary>Putanja fajla (za probu diska ako se otvaranje zaglavi).</summary>
+    public string? Path { get; init; }
+
     /// <summary>Podaci planera (rezervacija u rotaciji, zapis iz baze).</summary>
     public object? Tag { get; init; }
 

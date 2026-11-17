@@ -76,6 +76,7 @@ try {
 }
 finally {
     Stop-All
+    foreach ($f in 'zaglavljeni.txt', 'otvoreni.txt') { $p = Join-Path $data $f; if (Test-Path $p) { Write-Host "--- $f ---"; Get-Content $p } }
     Write-Host '--- dnevnik nadzora ---'
     Lines 'watchdog' | Select-Object -Last 40
     Write-Host '--- dnevnik audio procesa ---'

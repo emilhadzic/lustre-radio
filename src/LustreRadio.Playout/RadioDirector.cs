@@ -576,6 +576,7 @@ public sealed class RadioDirector : IPlanner
                 Part = decision.Part is { } part ? (byte)((int)part + 1) : (byte)0,
                 Tier = (byte)((int)tier + 1),
                 Program = decision.Program.Name,
+                Path = record.Path,
                 Tag = new PlanTag(record, reservation, decision.Program.Name, closing),
             };
         }

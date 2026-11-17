@@ -605,7 +605,7 @@ public sealed class Coordinator : IDisposable
             free.Ticket = -1;
             free.PreparedSeq = -1;
             free.PreparedAt = -1;
-            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, free.OpenJob!), now);
+            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, free.OpenJob!, free.Planned?.Path), now);
             return true;
         }
 
@@ -1074,6 +1074,10 @@ public sealed class Coordinator : IDisposable
         {
             _stuckTracks.Add(stuckItem.Track.Id);
         }
+        else if (job.Kind == WorkerJobKind.Prepare && slot?.Planned is { } planned)
+        {
+            _stuckTracks.Add(planned.TrackId); // zaglavilo se samo otvaranje fajla
+        }
 
         _log($"Zastoj dekodera ({why}); napustenih niti: {_abandonedWorkers.Count}.");
         if (_abandonedWorkers.Count >= Options.Stall.MaxAbandoned)
@@ -1153,7 +1157,7 @@ internal enum WorkerJobKind
 
 internal readonly record struct WorkerJob(WorkerJobKind Kind, int SlotIndex, int Generation, ISampleSource? Source, Func<QueuedTrack?>? Next, string? Path = null)
 {
-    public static WorkerJob Prepare(int slot, int generation, Func<QueuedTrack?> next) => new(WorkerJobKind.Prepare, slot, generation, null, next);
+    public static WorkerJob Prepare(int slot, int generation, Func<QueuedTrack?> next, string? path = null) => new(WorkerJobKind.Prepare, slot, generation, null, next, path);
 
     public static WorkerJob Decode(int slot, int generation, ISampleSource source, string? path) => new(WorkerJobKind.Decode, slot, generation, source, null, path);
 
