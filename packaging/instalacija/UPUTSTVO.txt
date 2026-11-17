@@ -1,0 +1,39 @@
+LUSTRE RADIO - instalacija na mini PC u Caffe Lustreu
+
+PRE INSTALACIJE (jednom, podesavanja Windows-a)
+1. Nalog: prijavite se nalogom pod kojim ce radio raditi (preporuka: poseban standardni nalog
+   "LustreRadio" sa automatskom prijavom). Radio radi samo dok je taj nalog prijavljen.
+2. Napajanje: Settings -> System -> Power -> Screen i Sleep: "Never" (racunar ne sme da zaspi).
+3. BIOS (ako postoji): "Restore on AC Power Loss" = On, da se racunar sam upali posle nestanka struje.
+4. Zvucnik: Bluetooth zvucnik upariti; u Sound podesavanjima koristiti "Stereo", ne "Hands-Free".
+   Taj zvucnik postaviti kao podrazumevani izlaz. Sistemsku glasnocu staviti na 100% i ne dirati je.
+5. Sistemski zvuci: Sound -> More sound settings -> Sounds -> "No Sounds".
+6. Windows Update: Active hours postaviti na radno vreme lokala (npr. 07:00-23:59).
+
+INSTALACIJA
+1. Raspakujte ceo ZIP u neki folder (npr. Downloads). Ne pokrecite iz ZIP-a.
+2. Dvoklik na INSTALIRAJ.cmd. Ako Windows pita "Windows protected your PC": More info -> Run anyway.
+   Program se kopira u vas korisnicki folder i pravi se zadatak za automatsko pokretanje.
+3. Otvara se ekran LUSTRE RADIO. Dole desno: Admin.
+   - prvi put postavite PIN (4 do 8 cifara, dvaput);
+   - Muzika -> Dodaj folder -> izaberite folder sa pesmama (najbolje na disku C:);
+   - Licenca -> "Izjavljujem da placam SOKOJ i OFPS";
+   - Zakljucaj.
+4. Muzika krece sama u radno vreme (07:00 - 23:30) i stisava se u 23:30.
+
+SVAKODNEVNO
+- Nista ne treba raditi. Posle paljenja racunara i prijave, radio i ekran se pokrecu sami.
+- Ako se ekran zatvori, sam se vraca za najvise pola minuta. Muzika ne staje kad se ekran zatvori.
+- Ako se audio program srusi, nadzor ga vraca za nekoliko sekundi.
+
+NADOGRADNJA NA NOVU VERZIJU
+- Raspakujte novu verziju i ponovo pokrenite INSTALIRAJ.cmd. Baza, pesme i podesavanja ostaju.
+
+ZAUSTAVLJANJE I UKLANJANJE
+- Privremeno zaustavljanje: u folderu %LOCALAPPDATA%\Programs\LustreRadio dvoklik na ZAUSTAVI.cmd
+  (do sledeceg pokretanja racunara ili do POKRENI.cmd).
+- Uklanjanje: DEINSTALIRAJ.cmd. Podaci ostaju u C:\ProgramData\LustreRadio.
+
+AKO NESTO NE RADI
+- Admin -> Provera sistema pokazuje stanje.
+- Dnevnici: C:\ProgramData\LustreRadio\logs - posaljite ih.

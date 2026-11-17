@@ -155,6 +155,12 @@ public static class Program
                 {
                     engine.Dispose();
                 }
+
+                // Spec. 2.1: i ekran (UI) pokrece nadzor; ako ga neko zatvori ili padne, vraca se (najvise jednom u 30 s).
+                if (!observation.StopRequested)
+                {
+                    EnsureUi(sessionId, log);
+                }
             }
             catch (Exception ex)
             {
@@ -281,6 +287,45 @@ public static class Program
 
     private static void WaitForEngineGone(TimeSpan limit) =>
         SpinWait.SpinUntil(() => !SingleInstance.IsHeld(InstanceNames.Engine), limit);
+
+    private static readonly Stopwatch UiAttempt = new();
+
+    private static void EnsureUi(int sessionId, Logger log)
+    {
+        if (UiAttempt.IsRunning && UiAttempt.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            return;
+        }
+
+        var running = Process.GetProcessesByName("LustreRadio.UI").Count(p =>
+        {
+            using (p)
+            {
+                try
+                {
+                    return p.SessionId == sessionId && !p.HasExited;
+                }
+                catch (Exception)
+                {
+                    return false;
+                }
+            }
+        });
+        if (running > 0 || SingleInstance.IsHeld(InstanceNames.Ui))
+        {
+            return;
+        }
+
+        var uiPath = Path.Combine(AppContext.BaseDirectory, "LustreRadio.UI.exe");
+        if (!File.Exists(uiPath))
+        {
+            return;
+        }
+
+        UiAttempt.Restart();
+        using var process = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = false, WorkingDirectory = AppContext.BaseDirectory });
+        log.Information("Pokrenut ekran {ProcessId}.", process?.Id);
+    }
 
     private static void StartEngine(string enginePath, bool safeMode, Logger log)
     {

@@ -151,6 +151,24 @@ jobs:
           name: LustreRadio
           path: publish/LustreRadio
           retention-days: 30
+      - name: Instalacioni paket (B6) i provera instalacije na G
+        shell: pwsh
+        timeout-minutes: 6
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $pkg = 'publish/LustreRadio-instalacija'
+          New-Item -ItemType Directory -Force "$pkg/program" | Out-Null
+          Copy-Item publish/LustreRadio/* "$pkg/program" -Recurse
+          Remove-Item "$pkg/program/UPUTSTVO.txt" -ErrorAction SilentlyContinue
+          Copy-Item packaging/instalacija/* $pkg
+          if (Get-ChildItem $pkg -Recurse -Filter 'LustreRadio.TestEngine*') { throw 'probni Engine u instalacionom paketu' }
+          if (Get-ChildItem $pkg -Recurse -Filter 'LustreRadio.Sim*') { throw 'simulacija u instalacionom paketu' }
+          ./tests/integration/instalacija.ps1 -Package (Resolve-Path $pkg)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LustreRadio-instalacija
+          path: publish/LustreRadio-instalacija
+          retention-days: 90
       - name: Paket za preuzimanje (Bench)
         run: dotnet publish src/LustreRadio.Bench/LustreRadio.Bench.csproj -c Release -r win-x64 --self-contained true -o publish/LustreRadio-Bench
       - uses: actions/upload-artifact@v4

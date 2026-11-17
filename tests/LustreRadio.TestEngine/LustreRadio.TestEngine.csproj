@@ -10,5 +10,6 @@
     <ProjectReference Include="..\..\src\LustreRadio.Engine\LustreRadio.Engine.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Playout\LustreRadio.Playout.csproj" />
     <ProjectReference Include="..\..\src\LustreRadio.Core\LustreRadio.Core.csproj" />
+    <ProjectReference Include="..\..\src\LustreRadio.Data\LustreRadio.Data.csproj" />
   </ItemGroup>
 </Project>
