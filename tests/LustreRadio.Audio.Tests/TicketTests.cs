@@ -202,4 +202,80 @@ public sealed class TicketTests(ITestOutputHelper output)
         Assert.Equal(0, leaks);
         Assert.Equal(0, tickets.InUse);
     }
+
+    private sealed class BlockingPlanner(Queue<ScriptedSource> sources) : IPlanner
+    {
+        public ManualResetEventSlim Gate { get; } = new(true);
+
+        public int Calls { get; private set; }
+
+        public (int Size, string? Reason) Capacity() => (Math.Min(3, sources.Count), null);
+
+        public PlannedItem? Select(IReadOnlyList<string> before)
+        {
+            Calls++;
+            Gate.Wait(); // koordinator stoji (zaglavljen u planeru)
+            lock (sources)
+            {
+                return sources.Count == 0 ? null : new PlannedItem { TrackId = (100 - sources.Count).ToString(System.Globalization.CultureInfo.InvariantCulture), Tag = sources.Dequeue() };
+            }
+        }
+
+        public QueuedTrack? Open(PlannedItem item) => new(item.TrackId, (ScriptedSource)item.Tag!) { PlaybackId = item.PlaybackId };
+
+        public void Release(PlannedItem item)
+        {
+        }
+
+        public bool IsValid(PlannedItem item) => true;
+    }
+
+    [Fact] // B-210: koordinator stoji dok sviraju kratke pesme: nema pada; nit za mesanje ne ceka; posle povratka istorija tacna
+    public void B210_CoordinatorStalls_MixerNeverWaits_HistoryCatchesUp()
+    {
+        var format = AudioFormat.Stereo44100;
+        var sources = new Queue<ScriptedSource>(Enumerable.Range(0, 24).Select(_ => new ScriptedSource(format, 44100 * 2, _ => 0.2f)));
+        var planner = new BlockingPlanner(sources);
+        var events = new RecordingEvents();
+        using var coordinator = new Coordinator(format, planner, new CoordinatorOptions { DurableWaitSeconds = 0 }, events, threaded: true);
+        coordinator.Start();
+        var sequencer = new CrossfadeSequencer(format, coordinator, 0.5);
+        var buffer = new float[1024 * 2];
+        var slowest = TimeSpan.Zero;
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        while (sequencer.Events.Count < 3 && watch.Elapsed < TimeSpan.FromSeconds(20))
+        {
+            sequencer.Read(buffer);
+            Thread.Sleep(5);
+        }
+
+        planner.Gate.Reset(); // koordinator ce stati pri sledecem izboru
+        var startedBefore = sequencer.Events.Count;
+        for (var i = 0; i < 2000; i++) // oko 46 s zvuka, bez cekanja na stvarno vreme
+        {
+            var t = System.Diagnostics.Stopwatch.StartNew();
+            sequencer.Read(buffer);
+            slowest = t.Elapsed > slowest ? t.Elapsed : slowest;
+        }
+
+        var startedDuring = sequencer.Events.Count - startedBefore;
+        var recordsDuring = events.Records.Count;
+        planner.Gate.Set();
+        watch.Restart();
+        while (sequencer.Events.Count < startedBefore + startedDuring + 3 && watch.Elapsed < TimeSpan.FromSeconds(30))
+        {
+            sequencer.Read(buffer);
+            Thread.Sleep(5);
+        }
+
+        Thread.Sleep(300);
+        var started = sequencer.Events.Select(e => e.PlaybackId).ToList();
+        var recorded = events.Records.Where(r => r.Kind is JournalKind.Started or JournalKind.Crossfade).Select(r => r.PlaybackId).ToList();
+        output.WriteLine($"dok koordinator stoji: novih pesama {startedDuring}, najduzi poziv niti za mesanje {slowest.TotalMilliseconds:F2} ms, tisina {sequencer.StarvedFrames / 44100.0:F1} s; zapisa pre povratka {recordsDuring}, posle {events.Records.Count}");
+        Assert.True(startedDuring <= 2);
+        Assert.True(slowest < TimeSpan.FromMilliseconds(50));
+        Assert.True(sequencer.StarvedFrames > 0);
+        Assert.Equal(started.Take(started.Count - 1), recorded.Take(started.Count - 1)); // svaka pesma koja je krenula, istim redom
+        coordinator.DiscardPending(StopReason.Shutdown);
+    }
 }

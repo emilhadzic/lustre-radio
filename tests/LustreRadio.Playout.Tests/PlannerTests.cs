@@ -394,43 +394,6 @@ public sealed class PlannerTests(ITestOutputHelper output) : IDisposable
         Assert.All(lines, l => Assert.True(l.Contains("\"pid_a\"", StringComparison.Ordinal) && l.Contains("\"pid_b\"", StringComparison.Ordinal)));
     }
 
-    [Fact] // B-210: koordinator ne oslobadja kartice (sve zauzete) -> nema nove pesme, nema pada; nit za mesanje salje tisinu
-    public void B210_AllTicketsTaken_NoNewTrack_NoCrash_ThenRecovers()
-    {
-        Tones(6, 2);
-        var (_, _, session) = Start(Monday.AddHours(10));
-        TestEnvironment.Render(session, 0.5);
-        var tickets = session.Sequencer.Coordinator.Tickets;
-        var held = new List<long>();
-        long h;
-        while ((h = tickets.Plan(Guid.Empty, 0)) >= 0)
-        {
-            held.Add(h);
-        }
-
-        var before = session.Sequencer.Events.Count;
-        for (var i = 0; i < 20; i++)
-        {
-            TestEnvironment.Render(session, 0.5);
-            while ((h = tickets.Plan(Guid.Empty, 0)) >= 0)
-            {
-                held.Add(h); // koordinator jos nije prepisao: svaka oslobodjena kartica je odmah zauzeta
-            }
-        }
-
-        var during = session.Sequencer.Events.Count - before;
-        foreach (var x in held)
-        {
-            tickets.MarkWithdrawn(x);
-            tickets.Release(x);
-        }
-
-        TestEnvironment.Render(session, 10);
-        output.WriteLine($"zauzetih kartica {held.Count}; novih pesama dok su zauzete {during}; posle {session.Sequencer.Events.Count - before - during}");
-        Assert.True(during <= 2); // najvise ono sto je vec imalo karticu
-        Assert.True(session.Sequencer.Events.Count - before - during >= 2);
-    }
-
     [Fact] // B-220 (smanjeno): ceo put kartica -> crna kutija -> dnevnik -> baza -> oporavak; padovi u nasumicnim trenucima
     public void B220_FullPath_RandomCrashes_OneRidPerCrossfade_NoDuplicates()
     {
