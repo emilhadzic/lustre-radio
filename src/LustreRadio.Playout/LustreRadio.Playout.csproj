@@ -14,5 +14,6 @@
   <ItemGroup>
     <InternalsVisibleTo Include="LustreRadio.Playout.Tests" />
     <InternalsVisibleTo Include="LustreRadio.CrashProbe" />
+    <InternalsVisibleTo Include="LustreRadio.TestEngine" />
   </ItemGroup>
 </Project>

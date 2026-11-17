@@ -20,7 +20,13 @@ public static class Program
     /// <summary>Kontrolisano ponovno pokretanje posle zaglavljenih poziva dekodera (D7-4); nadzor pokrece Engine ponovo.</summary>
     public const int ExitControlledRestart = 4;
 
-    public static int Main(string[] args)
+    public static int Main(string[] args) => Run(args, null, null);
+
+    /// <summary>
+    /// Isti tok kao <see cref="Main"/>. Probni Engine (samo testovi, D8-6) moze da doda podesavanja i pripremu pre pokretanja;
+    /// isporuceni Engine uvek prosledjuje null.
+    /// </summary>
+    internal static int Run(string[] args, Func<EngineHostOptions, EngineHostOptions>? adjust, Action<EngineHost>? beforeStart)
     {
         using var log = LogSetup.Create("engine");
         var smoke = args.Contains("--smoke");
@@ -49,13 +55,14 @@ public static class Program
                 return ExitAlreadyRunning;
             }
 
-            using var host = new EngineHost(new EngineHostOptions
+            var options = new EngineHostOptions
             {
                 DataRoot = dataRoot,
                 Log = message => log.Information("{Message}", message),
                 PipeName = smoke ? null : IpcProtocol.DefaultPipeName,
                 SafeMode = safe,
-            });
+            };
+            using var host = new EngineHost(adjust?.Invoke(options) ?? options);
 
             if (smoke)
             {
@@ -66,6 +73,7 @@ public static class Program
 
             host.TrackStarted += playing => log.Information("Svira: {Artist} - {Title} [{Program}]", playing.Artist, playing.Title, playing.Program);
             host.OutputStateChanged += (state, detail) => log.Information("Izlaz: {State} {Detail}", state, detail);
+            beforeStart?.Invoke(host);
             host.Start();
             host.IndexInBackground();
 

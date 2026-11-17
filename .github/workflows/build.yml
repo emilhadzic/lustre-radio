@@ -131,6 +131,14 @@ jobs:
           $phaseA = Join-Path $env:RUNNER_TEMP 'faza-a'
           Expand-Archive $zip -DestinationPath $phaseA -Force
           ./tests/integration/baza.ps1 -Bin (Resolve-Path publish/LustreRadio) -PhaseA $phaseA -Fixture (Resolve-Path testdata/db/sema1-sqlite-3.46.1.db)
+      - name: Oporavak posle zaglavljenog dekodera (B6, B-196 skraceno; pravi nadzor + probni Engine)
+        shell: pwsh
+        timeout-minutes: 8
+        run: |
+          $ErrorActionPreference = 'Stop'
+          dotnet publish tests/LustreRadio.TestEngine/LustreRadio.TestEngine.csproj -c Release -r win-x64 --self-contained true -o publish/TestEngine
+          if ($LASTEXITCODE -ne 0) { throw 'publish probnog Engine-a' }
+          ./tests/integration/oporavak.ps1 -Bin (Resolve-Path publish/LustreRadio) -TestEngineBin (Resolve-Path publish/TestEngine)
       - name: Memorija objavljenih programa (B-101, B-102, B-103; G, bez zvuka)
         shell: pwsh
         timeout-minutes: 9
@@ -161,7 +169,7 @@ jobs:
   simulacija:
     # G-sim: simulacija slabog racunara. NIJE test na Celeronu N4000 niti sa Bluetooth zvucnikom.
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 50
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -175,6 +183,12 @@ jobs:
           $exe = Get-ChildItem tests/LustreRadio.Sim/bin/Release -Recurse -Filter LustreRadio.Sim.exe | Select-Object -First 1
           & $exe.FullName --all --seconds 180 --out sim-rezultati
           if ($LASTEXITCODE -ne 0) { throw "simulacija: izlazni kod $LASTEXITCODE" }
+      - name: G-sim, B6 (jedna duza simulacija sa opterecenjem i brojanjem pretapanja)
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem tests/LustreRadio.Sim/bin/Release -Recurse -Filter LustreRadio.Sim.exe | Select-Object -First 1
+          & $exe.FullName --long --seconds 1320 --out sim-rezultati
+          if ($LASTEXITCODE -ne 0) { throw "duza simulacija: izlazni kod $LASTEXITCODE" }
       - uses: actions/upload-artifact@v4
         if: always()
         with:

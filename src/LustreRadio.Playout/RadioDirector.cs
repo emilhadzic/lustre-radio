@@ -405,6 +405,9 @@ public sealed class RadioDirector : IPlanner
             TaskScheduler.Default);
     }
 
+    /// <summary>Samo za probni Engine (testovi sa pravim nadzorom, D8-6): poziva se pre otvaranja fajla. U programu je null.</summary>
+    internal Action<string>? BeforeOpen { get; set; }
+
     /// <summary>Samo za testove: otvaranje fajla za proveru greske (u programu: isti dekoder kao pri pustanju).</summary>
     internal Func<TrackRecord, ISampleSource>? DecoderFactory { get; set; }
 
@@ -649,6 +652,7 @@ public sealed class RadioDirector : IPlanner
                 return null;
             }
 
+            BeforeOpen?.Invoke(record.Path);
             var source = Decoders.Open(record.Path, _format, record.DecoderId);
             try
             {

@@ -19,5 +19,6 @@
     <PackageReference Include="Serilog" />
     <PackageReference Include="Serilog.Sinks.File" />
     <Compile Include="..\Shared\LogSetup.cs" Link="Shared\LogSetup.cs" />
+    <InternalsVisibleTo Include="LustreRadio.TestEngine" />
   </ItemGroup>
 </Project>

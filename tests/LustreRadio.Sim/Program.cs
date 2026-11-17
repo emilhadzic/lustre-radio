@@ -40,6 +40,11 @@ public static class Program
                 return Child.Run(Arg(args, "--scenario") ?? "bez-ogranicenja", seconds);
             }
 
+            if (args.Contains("--long"))
+            {
+                return Launcher.RunLong(seconds, Arg(args, "--out") ?? "sim-rezultati");
+            }
+
             return Launcher.Run(seconds, Arg(args, "--out") ?? "sim-rezultati");
         }
         catch (Exception ex)
@@ -73,7 +78,7 @@ public static class Program
 }
 
 /// <summary>Scenario simulacije. Faktor = udeo jednog jezgra ovog racunara koji odgovara jednom jezgru N4000 (procena).</summary>
-internal sealed record Scenario(string Name, double? CpuFactor, bool TwoCores, bool Load, long? MemoryLimitBytes, string Description)
+internal sealed record Scenario(string Name, double? CpuFactor, bool TwoCores, bool Load, long? MemoryLimitBytes, string Description, int TrackSeconds = 45, int TrackCount = 10)
 {
     // PassMark po niti: N4000 oko 1.037 (cpubenchmark.net). GitHub racunar nije izmeren istim merilom;
     // pretpostavka je oko 2.600, pa je faktor oko 0,4. To je PROCENA; model procesora se upisuje u rezultat.
@@ -86,6 +91,11 @@ internal sealed record Scenario(string Name, double? CpuFactor, bool TwoCores, b
         new("duplo-strozije", EstimatedN4000Factor / 2, true, false, 256L << 20, "2 jezgra, polovina procene N4000, memorija 256 MB"),
         new("procena-n4000-opterecen", EstimatedN4000Factor, true, true, 256L << 20, "kao procena N4000, uz programe koji trose sve procesore"),
     ];
+
+    /// <summary>B6: jedna duza simulacija sa opterecenjem i brojanjem pretapanja (kratke pesme, mnogo prelaza).</summary>
+    public static readonly Scenario Long = new("dugo-opterecen", EstimatedN4000Factor, true, true, 256L << 20,
+        "kao procena N4000, uz programe koji trose sve procesore; pesme od 12 s, pretapanje 6 s", TrackSeconds: 12, TrackCount: 20);
+
 }
 
 /// <summary>Rezultat jednog scenarija.</summary>
@@ -137,7 +147,8 @@ internal static class Child
 
         try
         {
-            Library.Generate(music, count: 10, seconds: 45);
+            var scenario = Scenario.All.Append(Scenario.Long).FirstOrDefault(x => x.Name == scenarioName) ?? Scenario.All[0];
+            Library.Generate(music, count: scenario.TrackCount, seconds: scenario.TrackSeconds);
             using var db = LustreDatabase.Open(Path.Combine(data, "lustre.db"));
             LibraryIndexer.Run(db, [music]);
             db.Settings.SetJson(LibraryIndexer.CollectiveLicenseKey, new CollectiveLicense { Organizations = "SIM", DeclaredBy = "simulacija", DeclaredAt = DateTimeOffset.Now });
@@ -409,6 +420,36 @@ internal static class Launcher
         }
 
         return results.All(r => r.Error is null) ? 0 : 1;
+    }
+
+    /// <summary>
+    /// B6: jedan duzi scenario sa opterecenjem. Kriterijumi (nivo "procena N4000", plan deo 7): prazan izlaz 0, nijedan korak
+    /// niti za mesanje duzi od 50 ms, najmanje 200 pretapanja, privatna memorija Sim do 80 MB, bez greske. G-sim, nije test na hardveru.
+    /// </summary>
+    public static int RunLong(int seconds, string outFolder)
+    {
+        Directory.CreateDirectory(outFolder);
+        var self = Environment.ProcessPath ?? throw new InvalidOperationException("Nepoznata putanja programa.");
+        var s = Scenario.Long;
+        Console.WriteLine($"== G-sim scenario {s.Name}: {s.Description} ({seconds} s)");
+        var r = RunOne(self, s, seconds);
+        File.WriteAllText(Path.Combine(outFolder, "g-sim-b6-dugo.json"), JsonSerializer.Serialize(r, new JsonSerializerOptions { WriteIndented = true }));
+        var crossfades = Math.Max(0, r.TracksStarted - 1);
+        var checks = new (string Name, bool Ok)[]
+        {
+            ("bez greske", r.Error is null),
+            ($"prazan izlaz {r.DeviceUnderrunEvents} (dozvoljeno 0)", r.DeviceUnderrunEvents == 0),
+            ($"koraka duzih od 50 ms: {r.RenderStepsOver50ms} (najduzi {r.RenderMaxStepMs} ms)", r.RenderStepsOver50ms == 0),
+            ($"pretapanja {crossfades} (najmanje 200)", crossfades >= 200),
+            ($"privatna memorija vrh {r.PrivateMemoryPeakMb} MB (do 80)", r.PrivateMemoryPeakMb <= 80),
+            ($"memorija na audio-niti {r.RenderAllocatedBytes} B, brava {r.GuardLock}", r.RenderAllocatedBytes == 0 && r.GuardLock == 0),
+        };
+        foreach (var (name, ok) in checks)
+        {
+            Console.WriteLine($"G-SIM-B6 | {s.Name} | {name} | {(ok ? "PASS" : "FAIL")}");
+        }
+
+        return checks.All(c => c.Ok) ? 0 : 1;
     }
 
     private static SimResult RunOne(string self, Scenario scenario, int seconds)

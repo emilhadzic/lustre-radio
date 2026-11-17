@@ -34,6 +34,9 @@ public sealed record EngineHostOptions
 
     /// <summary>Sigurni rezim (posle vise padova): bez skeniranja biblioteke.</summary>
     public bool SafeMode { get; init; }
+
+    /// <summary>Samo za probni Engine (D8-6): poziva se pre otvaranja svakog fajla. Nije dostupno van testova.</summary>
+    internal Action<string>? BeforeOpenFile { get; init; }
 }
 
 /// <summary>
@@ -169,6 +172,7 @@ public sealed class EngineHost : IDisposable, IRadioControl
         }
 
         _director = new RadioDirector(Database, new SystemClock(), _format, new Random(), _options.Director, _log, History);
+        _director.BeforeOpen = _options.BeforeOpenFile;
         if (_options.AlwaysOpen)
         {
             _director.Schedule = AlwaysOpenSchedule(_director.Schedule);

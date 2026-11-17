@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Probni Engine (D8-6): isti kod radija, uz zaglavljen "dekoder" kojim upravlja test. NIKAD ne ide u paket za korisnika. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <OutputType>WinExe</OutputType>
+    <IsPackable>false</IsPackable>
+    <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\LustreRadio.Engine\LustreRadio.Engine.csproj" />
+    <ProjectReference Include="..\..\src\LustreRadio.Playout\LustreRadio.Playout.csproj" />
+    <ProjectReference Include="..\..\src\LustreRadio.Core\LustreRadio.Core.csproj" />
+  </ItemGroup>
+</Project>
