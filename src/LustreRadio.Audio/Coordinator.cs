@@ -584,7 +584,7 @@ public sealed class Coordinator : IDisposable
             free.Ticket = -1;
             free.PreparedSeq = -1;
             free.PreparedAt = -1;
-            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, free.OpenJob), now);
+            Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, free.OpenJob!), now);
             return true;
         }
 
