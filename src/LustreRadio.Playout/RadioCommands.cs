@@ -26,6 +26,9 @@ public interface IRadioControl
 
     /// <summary>Podesavanje je promenjeno; posalji novo stanje svim interfejsima.</summary>
     void StateChanged();
+
+    /// <summary>Biblioteka najava; null ako je nema.</summary>
+    VoiceLibrary? Voice => null;
 }
 
 /// <summary>
@@ -41,7 +44,8 @@ public sealed class RadioCommandHandler : IIpcHandler
     public const string StaffLanguageKey = "language-staff";
     public const string AdminLanguageKey = "language-admin";
 
-    private static readonly HashSet<string> AdminCommands = ["rescan", "set-music-folders", "set-volume-range", "logout", "set-language", "touch", "declare-collective-license"];
+    private static readonly HashSet<string> AdminCommands = ["rescan", "set-music-folders", "set-volume-range", "logout", "set-language", "touch", "declare-collective-license",
+        "voice-import", "voice-approve", "voice-enable", "voice-disable", "voice-archive", "voice-restore"];
 
     /// <summary>Komande koje menjaju bazu: dok baza nije nadogradjena, odbijaju se (plan faze B, 2.3).</summary>
     public static readonly IReadOnlySet<string> BlockedWithoutUpgrade = new HashSet<string> { "rescan", "set-music-folders", "set-volume-range", "set-language", "declare-collective-license", "set-pin" };
@@ -245,8 +249,68 @@ public sealed class RadioCommandHandler : IIpcHandler
                 _radio.StateChanged();
                 return IpcMessage.Success(command.Id);
 
+            case "voice-import":
+                return VoiceImport(command, args);
+
+            case "voice-approve" or "voice-enable" or "voice-disable" or "voice-archive" or "voice-restore":
+                if (_radio.Voice is not { } voice || !args.TryGetValue("id", out var voiceId))
+                {
+                    return IpcMessage.Failure(command.Id, "bad-argument");
+                }
+
+                var done = name switch
+                {
+                    "voice-approve" => voice.Approve(voiceId, "admin (PIN)"),
+                    "voice-enable" => voice.SetEnabled(voiceId, true),
+                    "voice-disable" => voice.SetEnabled(voiceId, false),
+                    "voice-archive" => voice.Archive(voiceId),
+                    _ => voice.Restore(voiceId),
+                };
+                if (!done)
+                {
+                    return IpcMessage.Failure(command.Id, name == "voice-approve" ? "voice-license-incomplete" : "bad-argument");
+                }
+
+                _log?.Invoke($"Najava {voiceId}: {name}.");
+                _radio.StateChanged();
+                return IpcMessage.Success(command.Id);
+
             default:
                 return IpcMessage.Failure(command.Id, "unknown-command");
+        }
+    }
+
+    /// <summary>Rucni uvoz najave (fajl generisan u servisu) sa podacima licence; pocinje kao nacrt.</summary>
+    private IpcMessage VoiceImport(IpcMessage command, Dictionary<string, string> args)
+    {
+        if (_radio.Voice is not { } voice || !args.TryGetValue("path", out var path) ||
+            !Enum.TryParse<Core.Voice.VoiceCategory>(args.GetValueOrDefault("category"), out var category) ||
+            !Enum.TryParse<Core.Voice.VoiceLanguage>(args.GetValueOrDefault("language"), out var language) ||
+            !Enum.TryParse<Core.Voice.VoiceKind>(args.GetValueOrDefault("voice"), out var kind))
+        {
+            return IpcMessage.Failure(command.Id, "bad-argument");
+        }
+
+        var license = new VoiceLicense
+        {
+            Service = args.GetValueOrDefault("service", string.Empty).Trim(),
+            ModelAndVoice = args.GetValueOrDefault("model", string.Empty).Trim(),
+            Plan = args.GetValueOrDefault("plan", string.Empty).Trim(),
+            PaymentProof = args.GetValueOrDefault("payment", string.Empty).Trim(),
+            GeneratedOn = args.GetValueOrDefault("generated", string.Empty).Trim(),
+            TermsSnapshot = args.GetValueOrDefault("terms", string.Empty).Trim(),
+        };
+        try
+        {
+            var entry = voice.Import(path, args.GetValueOrDefault("text", string.Empty), category, language, kind, license, Audio.AudioFormat.Stereo44100);
+            _log?.Invoke($"Uvezena najava {entry.Id} ({entry.Category}, {entry.Language}, {entry.DurationSeconds:F1} s).");
+            _radio.StateChanged();
+            return IpcMessage.Success(command.Id, new() { ["id"] = entry.Id });
+        }
+        catch (Exception ex) when (ex is ArgumentException or IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or NotSupportedException)
+        {
+            _log?.Invoke($"Uvoz najave nije uspeo: {ex.Message}");
+            return IpcMessage.Failure(command.Id, "voice-import-failed");
         }
     }
 

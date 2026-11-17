@@ -10,6 +10,7 @@ internal enum AdminSection
 {
     Library,
     License,
+    Voice,
     Volume,
     Language,
     Pin,
@@ -128,6 +129,7 @@ internal sealed class AdminPanel : Grid
         Theme.SetText(_lockButton, Texts.Get(language, T.Lock));
         Theme.SetText(_nav[AdminSection.Library], Texts.Get(language, T.SectionLibrary));
         Theme.SetText(_nav[AdminSection.License], Texts.Get(language, T.SectionLicense));
+        Theme.SetText(_nav[AdminSection.Voice], Texts.Get(language, T.SectionVoice));
         Theme.SetText(_nav[AdminSection.Volume], Texts.Get(language, T.SectionVolume));
         Theme.SetText(_nav[AdminSection.Language], Texts.Get(language, T.SectionLanguage));
         Theme.SetText(_nav[AdminSection.Pin], Texts.Get(language, T.SectionPin));
@@ -159,6 +161,9 @@ internal sealed class AdminPanel : Grid
             case AdminSection.License:
                 BuildLicense(state);
                 break;
+            case AdminSection.Voice:
+                BuildVoice(state);
+                break;
             case AdminSection.Volume:
                 BuildVolume(state);
                 break;
@@ -187,6 +192,7 @@ internal sealed class AdminPanel : Grid
         s?.BroadcastableTracks,
         s?.LicenseOrganizations,
         s?.LicenseDeclaredLocal,
+        string.Join(';', (s?.VoiceMessages ?? []).Select(v => $"{v.Id}{v.Status}{v.Enabled}{v.OnAir}")),
         s?.VolumeMin.ToString("R", CultureInfo.InvariantCulture),
         s?.VolumeMax.ToString("R", CultureInfo.InvariantCulture),
         Section == AdminSection.System ? $"{s?.Output}|{s?.Device}|{s?.PinIsSet}|{s?.SafeMode}|{s?.ClosesAtLocal}|{s?.OpensAtLocal}|{_probing}|{_probes.FreeDiskGb}|{(_probes.AutostartProblems is null ? "-" : string.Join(',', _probes.AutostartProblems))}" : string.Empty);
@@ -280,6 +286,88 @@ internal sealed class AdminPanel : Grid
         }
 
         Row(Theme.Label(Texts.Format(language, T.TracksSummary, state?.TotalTracks ?? 0, state?.BroadcastableTracks ?? 0), 18));
+    }
+
+    private void BuildVoice(RadioState? state)
+    {
+        var language = Lang;
+        Title(T.SectionVoice);
+        var explain = Theme.Label(Texts.Get(language, T.VoiceExplain), 18, Theme.Muted);
+        explain.TextWrapping = TextWrapping.Wrap;
+        explain.TextTrimming = TextTrimming.None;
+        explain.MaxWidth = 640;
+        Row(explain);
+        Row(Theme.Button(Texts.Get(language, T.VoiceImport), ImportVoice, primary: true));
+
+        var messages = state?.VoiceMessages ?? [];
+        if (messages.Count == 0)
+        {
+            Row(Theme.Label(Texts.Get(language, T.VoiceNone), 18, Theme.Muted));
+        }
+
+        foreach (var v in messages)
+        {
+            var status = v.Status switch
+            {
+                "Approved" => Texts.Get(language, T.VoiceStatusApproved),
+                "Archived" => Texts.Get(language, T.VoiceStatusArchived),
+                _ => Texts.Get(language, T.VoiceStatusDraft),
+            };
+            var air = v.OnAir ? Texts.Get(language, T.VoiceOnAir) : Texts.Get(language, T.VoiceNotOnAir);
+            var license = v.LicenseComplete ? string.Empty : " · " + Texts.Get(language, T.VoiceLicenseIncomplete);
+            var line = Theme.Label($"{v.Text}", 18);
+            line.TextWrapping = TextWrapping.Wrap;
+            line.TextTrimming = TextTrimming.None;
+            var info = Theme.Label($"{v.Category} · {v.Language} · {v.Voice} · {v.DurationSeconds:F1} s · {status} · {air}{license}", 15, v.OnAir ? Theme.Good : Theme.Muted);
+            var box = new StackPanel { Margin = new Thickness(0, Theme.Gap, 0, Theme.Gap / 2) };
+            box.Children.Add(line);
+            box.Children.Add(info);
+            var buttons = new StackPanel { Orientation = Orientation.Horizontal, Margin = new Thickness(0, Theme.Gap / 2, 0, 0) };
+            void Add(T text, string command)
+            {
+                var b = Theme.Button(Texts.Get(language, text), () => Send(command, new() { ["id"] = v.Id }));
+                b.Margin = new Thickness(0, 0, Theme.Gap, 0);
+                buttons.Children.Add(b);
+            }
+
+            if (v.Status == "Archived")
+            {
+                Add(T.VoiceRestore, "voice-restore");
+            }
+            else
+            {
+                if (v.Status == "Draft" && v.LicenseComplete)
+                {
+                    Add(T.VoiceApprove, "voice-approve");
+                }
+
+                Add(v.Enabled ? T.VoiceDisable : T.VoiceEnable, v.Enabled ? "voice-disable" : "voice-enable");
+                Add(T.VoiceArchive, "voice-archive");
+            }
+
+            box.Children.Add(buttons);
+            _content.Children.Add(box);
+        }
+    }
+
+    private void ImportVoice()
+    {
+        var language = Lang;
+        var dialog = new Microsoft.Win32.OpenFileDialog { Filter = "Zvuk|*.wav;*.mp3;*.flac;*.ogg;*.m4a", Multiselect = false };
+        if (dialog.ShowDialog(Window.GetWindow(this)) != true)
+        {
+            return;
+        }
+
+        var form = new VoiceImportWindow(language) { Owner = Window.GetWindow(this) };
+        if (form.ShowDialog() != true)
+        {
+            return;
+        }
+
+        var args = form.Values;
+        args["path"] = dialog.FileName;
+        Send("voice-import", args);
     }
 
     private void BuildVolume(RadioState? state)

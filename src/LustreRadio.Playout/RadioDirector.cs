@@ -75,6 +75,16 @@ public sealed class RadioDirector : IPlanner
     private ManualOverride? _override;
     private List<TrackInfo> _catalog = [];
     private Dictionary<string, TrackRecord> _records = [];
+    private readonly Core.Voice.VoiceScheduler _voiceScheduler = new(new Random());
+
+    /// <summary>Oznaka stavke plana koja je najava, ne pesma (ne ulazi u istoriju pesama ni u rotaciju).</summary>
+    public const string VoicePrefix = "voice:";
+
+    /// <summary>Biblioteka najava (spec. 15); null = bez najava.</summary>
+    public VoiceLibrary? Voice { get; set; }
+
+    /// <summary>Pravila emitovanja najava (podrazumevana iz specifikacije).</summary>
+    public Core.Voice.VoiceRules VoiceRules { get; set; } = new();
     private DateTime _cacheFrom = DateTime.MaxValue;
     private DateTime _cacheUntil = DateTime.MinValue;
     private bool _cacheShouldPlay;
@@ -490,6 +500,8 @@ public sealed class RadioDirector : IPlanner
 
     // ---------------- planer (B4): izbor na niti koordinatora, otvaranje na radnoj niti ----------------
 
+    private sealed record VoiceTag(VoiceEntry Entry);
+
     private sealed record PlanTag(TrackRecord Record, RotationReservation Reservation, string? Program, bool Closing)
     {
         /// <summary>Pesma koja svira pre ove (za DJ Mix); null ako se ne zna.</summary>
@@ -557,6 +569,12 @@ public sealed class RadioDirector : IPlanner
             bool Excluded(string id) => allowedCount > before.Count ? before.Contains(id) : allowedCount > 1 && id == last;
             var available = _catalog.Select(t => !Allowed(t) || Excluded(t.Id) ? t with { Broadcastable = false } : t).ToList();
 
+            // najava na granici izmedju dve pesme (nikad usred pesme, nikad dve zaredom, nikad pri zatvaranju)
+            if (!closing && Voice is { } voice && last is not null && !last.StartsWith(VoicePrefix, StringComparison.Ordinal) && SelectVoice(voice, now, decision) is { } voiceItem)
+            {
+                return voiceItem;
+            }
+
             TrackInfo? chosen = null;
             var tier = Core.Rotation.MatchTier.Program;
             if (PreferredNext is { } preferred)
@@ -594,9 +612,75 @@ public sealed class RadioDirector : IPlanner
         }
     }
 
+    private PlannedItem? SelectVoice(VoiceLibrary voice, DateTime now, ScheduleDecision decision)
+    {
+        var part = decision.Part ?? DayPart.Morning;
+        var open = _schedule.Days.TryGetValue(now.DayOfWeek, out var day) ? day.Times.Open : new TimeOnly(7, 0);
+        var boundary = new Core.Voice.VoiceBoundary
+        {
+            NowLocal = now,
+            Part = part,
+            OpenedAtLocal = now.Date + open.ToTimeSpan(),
+            ClosesAtLocal = decision.ClosesAtLocal ?? now.AddHours(1),
+            OverrideActive = _override is not null,
+        };
+        var choice = _voiceScheduler.OnBoundary(boundary, voice.Broadcastable(), VoiceRules);
+        if (choice.Message is not { } message || voice.Find(message.Id) is not { } entry)
+        {
+            return null;
+        }
+
+        _voiceScheduler.RecordPlayed(message, now, VoiceRules, part); // planirana = pustena (plan je kratak)
+        return new PlannedItem
+        {
+            TrackId = VoicePrefix + entry.Id,
+            Title = "Najava",
+            Artist = entry.Text,
+            Source = (byte)((int)decision.Source + 1),
+            Part = (byte)((int)part + 1),
+            Program = decision.Program?.Name,
+            Path = voice.PathOf(entry),
+            Tag = new VoiceTag(entry),
+        };
+    }
+
+    /// <summary>Najava: ide posle prirodnog kraja pesme (Break), glasnija od muzike za 1,5 LU, bez preklapanja sa sledecom.</summary>
+    private QueuedTrack? OpenVoice(PlannedItem item, VoiceEntry entry)
+    {
+        if (Voice is not { } voice || !voice.CanBroadcast(entry))
+        {
+            return null;
+        }
+
+        try
+        {
+            var source = Decoders.Open(voice.PathOf(entry), _format);
+            var settings = _options.Loudness with { TargetLufs = _options.Loudness.TargetLufs + VoiceLibrary.LouderThanMusicLu };
+            var gain = TrackGain.ToLinear(TrackGain.ComputeDb(entry.Lufs, entry.PeakDbfs, settings));
+            return new QueuedTrack(item.TrackId, source, gain)
+            {
+                Break = true,
+                TransitionSeconds = 0.05,
+                PlaybackId = item.PlaybackId,
+                Path = voice.PathOf(entry),
+                Info = new NowPlaying(item.TrackId, "Najava", entry.Text, item.Program ?? string.Empty, null, Resumed: false, entry.DurationSeconds),
+            };
+        }
+        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException or InvalidDataException or InvalidOperationException or NotSupportedException or ArgumentException)
+        {
+            _log($"Najava {entry.Id} ne moze da se pusti: {ex.Message}. Muzika ide dalje.");
+            return null;
+        }
+    }
+
     public QueuedTrack? Open(PlannedItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        if (item.Tag is VoiceTag voiceTag)
+        {
+            return OpenVoice(item, voiceTag.Entry);
+        }
+
         if (item.Tag is not PlanTag tag)
         {
             return null;
@@ -646,6 +730,11 @@ public sealed class RadioDirector : IPlanner
     public bool IsValid(PlannedItem item)
     {
         ArgumentNullException.ThrowIfNull(item);
+        if (item.Tag is VoiceTag voiceTag)
+        {
+            return Voice is { } voice && voice.Find(voiceTag.Entry.Id) is { } current && voice.CanBroadcast(current);
+        }
+
         AudioThreadGuard.Touch(AudioViolation.Lock);
         lock (_sync)
         {

@@ -4,6 +4,35 @@ using System.Text.Json.Serialization;
 
 namespace LustreRadio.Ipc;
 
+/// <summary>Jedna najava, kako je vidi admin.</summary>
+public sealed record VoiceItem
+{
+    public string Id { get; init; } = string.Empty;
+
+    public string Text { get; init; } = string.Empty;
+
+    /// <summary>Ident, Welcome, Long, Seasonal, Holiday, Event.</summary>
+    public string Category { get; init; } = string.Empty;
+
+    /// <summary>Serbian ili English.</summary>
+    public string Language { get; init; } = string.Empty;
+
+    /// <summary>Female ili Male.</summary>
+    public string Voice { get; init; } = string.Empty;
+
+    /// <summary>Draft, Approved, Archived.</summary>
+    public string Status { get; init; } = string.Empty;
+
+    public bool Enabled { get; init; }
+
+    public bool LicenseComplete { get; init; }
+
+    /// <summary>Sme u eter (odobrena, ukljucena, licenca potpuna, fajl isti).</summary>
+    public bool OnAir { get; init; }
+
+    public double DurationSeconds { get; init; }
+}
+
 /// <summary>Stanje radija koje interfejs prikazuje. Audio proces je jedini izvor istine.</summary>
 public sealed record RadioState
 {
@@ -82,6 +111,9 @@ public sealed record RadioState
 
     /// <summary>Organizacije iz izjave vlasnika o kolektivnoj licenci (npr. "SOKOJ, OFPS"); null ako izjave nema.</summary>
     public string? LicenseOrganizations { get; init; }
+
+    /// <summary>Najave u biblioteci (admin, Glas).</summary>
+    public List<VoiceItem> VoiceMessages { get; init; } = [];
 
     public DateTime? LicenseDeclaredLocal { get; init; }
 

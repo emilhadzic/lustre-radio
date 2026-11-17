@@ -462,6 +462,11 @@ public sealed class HistoryStore
     public bool InsertOutcome(PlaybackOutcome outcome)
     {
         ArgumentNullException.ThrowIfNull(outcome);
+        if (outcome.TrackId <= 0)
+        {
+            return true; // najava (nije pesma): ostaje samo u dnevniku emitovanja, ne ulazi u istoriju pesama i rotaciju
+        }
+
         var stopped = outcome.Status == PlaybackStatus.Stopped;
         return _db.Execute(
             """

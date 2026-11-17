@@ -46,6 +46,9 @@ public sealed record EngineHostOptions
 /// </summary>
 public sealed class EngineHost : IDisposable, IRadioControl
 {
+    /// <summary>Biblioteka najava (spec. 15).</summary>
+    public VoiceLibrary? Voice { get; private set; }
+
     public const string MusicFoldersKey = "music-folders";
     public const string VolumeKey = "volume";
 
@@ -173,6 +176,8 @@ public sealed class EngineHost : IDisposable, IRadioControl
 
         _director = new RadioDirector(Database, new SystemClock(), _format, new Random(), _options.Director, _log, History);
         _director.BeforeOpen = _options.BeforeOpenFile;
+        Voice = new VoiceLibrary(Database, Path.Combine(_options.DataRoot, Core.AppPaths.Voice));
+        _director.Voice = Voice;
         if (_options.AlwaysOpen)
         {
             _director.Schedule = AlwaysOpenSchedule(_director.Schedule);
@@ -384,6 +389,19 @@ public sealed class EngineHost : IDisposable, IRadioControl
                 AdminLanguage = RadioCommandHandler.Language(Database, RadioCommandHandler.AdminLanguageKey),
                 EngineVersion = typeof(EngineHost).Assembly.GetName().Version?.ToString(3),
                 LicenseOrganizations = license?.Organizations,
+                VoiceMessages = Voice?.All().Select(v => new VoiceItem
+                {
+                    Id = v.Id,
+                    Text = v.Text,
+                    Category = v.Category.ToString(),
+                    Language = v.Language.ToString(),
+                    Voice = v.Voice.ToString(),
+                    Status = v.Status.ToString(),
+                    Enabled = v.Enabled,
+                    LicenseComplete = v.License.IsComplete,
+                    OnAir = Voice.CanBroadcast(v),
+                    DurationSeconds = Math.Round(v.DurationSeconds, 1),
+                }).ToList() ?? [],
                 LicenseDeclaredLocal = license?.DeclaredAt.LocalDateTime,
                 DatabaseMode = DatabaseMode == DatabaseMode.Normal ? RadioState.DatabaseNormal : RadioState.DatabaseNotUpgraded,
                 DatabaseModeReason = DatabaseModeReason,

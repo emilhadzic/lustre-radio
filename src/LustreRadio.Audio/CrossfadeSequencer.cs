@@ -22,6 +22,9 @@ public sealed record QueuedTrack(string Id, ISampleSource Source, float Gain = 1
 
     /// <summary>DJ Mix uzivo: kada i kako ova pesma ulazi preko prethodne. null = Smart/obicno pretapanje.</summary>
     public DjCue? Cue { get; init; }
+
+    /// <summary>Najava (Break, spec. 5.1): prethodna pesma se zavrsi prirodno, bez pretapanja preko najave.</summary>
+    public bool Break { get; init; }
 }
 
 /// <summary>
@@ -429,6 +432,12 @@ public sealed class CrossfadeSequencer : IFrameProvider
         if (_transition || _crossfadeFrames <= 0 || fade <= 0 || _current.Starved || _current.RemainingFrames is not long remaining)
         {
             return chunk;
+        }
+
+        // Break: sledeca je najava -> pesma svira do kraja, prelaz samo u poslednjih 50 ms (bez klika)
+        if (_handoff.Peek()?.Track.Break == true)
+        {
+            fade = Math.Min(fade, _recoveryFadeFrames);
         }
 
         var untilTransition = remaining - fade;
