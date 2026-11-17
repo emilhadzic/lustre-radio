@@ -536,7 +536,7 @@ public sealed class HistoryTests(ITestOutputHelper output) : IDisposable
         }
 
         Assert.Equal(500, h.Box.LostCount);
-        Assert.True(h.Scribe.DrainNow(TimeSpan.FromSeconds(60)));
+        Assert.True(h.Scribe.DrainNow(TimeSpan.FromSeconds(240))); // 3.333 upisa u bazu; G je pod opterecenjem drugih testova
         var records = JournalRecords();
         Assert.Equal(10_000, records.Count(r => r.Kind != JournalKind.Lost));
         var lost = Assert.Single(records, r => r.Kind == JournalKind.Lost);

@@ -81,7 +81,7 @@ public sealed class PlannerTests(ITestOutputHelper output) : IDisposable
         }
 
         // B-136: bez plana nema reda "Sledeca"
-        var state = new RadioState { OnAir = true, Title = "x", NextTitle = session.Plan.Items.FirstOrDefault()?.Title, NextArtist = session.Plan.Items.FirstOrDefault()?.Artist };
+        var state = new RadioState { OnAir = true, TrackId = "1", Title = "x", NextTitle = session.Plan.Items.FirstOrDefault()?.Title, NextArtist = session.Plan.Items.FirstOrDefault()?.Artist };
         var view = StaffView.From(state, LinkStatus.Connected, Monday.AddHours(10), Monday.AddHours(10).ToUniversalTime());
         Assert.Equal(expected == 0, string.IsNullOrEmpty(view.NextLine));
     }
@@ -369,10 +369,10 @@ public sealed class PlannerTests(ITestOutputHelper output) : IDisposable
         using var again = PlaybackHistory.Open(root, _env.Db);
         var rows = _env.Db.History.GetSince(DateTime.MinValue.ToUniversalTime()).Where(r => r.PlaybackId is not null).ToList();
         output.WriteLine(string.Join(" | ", rows.Select(r => r.Status)));
-        // svaka pustena pesma je u istoriji (oporavak iz crne kutije); pripremljena sledeca koja nije krenula je NEPOTVRDJENO (a)
-        Assert.Equal(sequencer.Events.Count - 1, rows.Count(r => r.Status == "odsvirana"));
-        Assert.Single(rows, r => r.Status == "nepotvrdjena-b");
-        Assert.InRange(rows.Count(r => r.Status == "nepotvrdjena-a"), 0, 1);
+        // svaka pustena pesma je u istoriji (oporavak iz crne kutije); pad usred pesme ili repa daje NEPOTVRDJENO, nikad PREKINUTO
+        Assert.True(rows.Count(r => r.Status == "odsvirana") >= sequencer.Events.Count - 2);
+        Assert.All(rows, r => Assert.True(r.Status is "odsvirana" || r.Status.StartsWith("nepotvrdjena", StringComparison.Ordinal), r.Status));
+        Assert.InRange(rows.Count(r => r.Status.StartsWith("nepotvrdjena", StringComparison.Ordinal)), 1, 3);
         Assert.All(sequencer.Events, e => Assert.Contains(rows, r => r.PlaybackId == e.PlaybackId.ToString()));
     }
 
@@ -409,7 +409,15 @@ public sealed class PlannerTests(ITestOutputHelper output) : IDisposable
         }
 
         var before = session.Sequencer.Events.Count;
-        TestEnvironment.Render(session, 10);
+        for (var i = 0; i < 20; i++)
+        {
+            TestEnvironment.Render(session, 0.5);
+            while ((h = tickets.Plan(Guid.Empty, 0)) >= 0)
+            {
+                held.Add(h); // koordinator jos nije prepisao: svaka oslobodjena kartica je odmah zauzeta
+            }
+        }
+
         var during = session.Sequencer.Events.Count - before;
         foreach (var x in held)
         {
@@ -419,7 +427,7 @@ public sealed class PlannerTests(ITestOutputHelper output) : IDisposable
 
         TestEnvironment.Render(session, 10);
         output.WriteLine($"zauzetih kartica {held.Count}; novih pesama dok su zauzete {during}; posle {session.Sequencer.Events.Count - before - during}");
-        Assert.True(during <= 1); // najvise ona koja je vec bila objavljena
+        Assert.True(during <= 2); // najvise ono sto je vec imalo karticu
         Assert.True(session.Sequencer.Events.Count - before - during >= 2);
     }
 

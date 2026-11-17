@@ -151,6 +151,11 @@ public sealed class Coordinator : IDisposable
         _refillBelow = format.FramesFromSeconds(Options.RefillBelowSeconds);
         _retryFrames = format.FramesFromSeconds(Options.RetryWhenEmptySeconds);
         _slots = [new Slot(new DeckFeed(_capacity)), new Slot(new DeckFeed(_capacity))];
+        foreach (var slot in _slots)
+        {
+            slot.OpenJob = () => _planner.Open(slot.Planned!); // jednom: koraci koordinatora ne zauzimaju memoriju
+        }
+
         _worker = NewWorker();
     }
 
@@ -579,7 +584,6 @@ public sealed class Coordinator : IDisposable
             free.Ticket = -1;
             free.PreparedSeq = -1;
             free.PreparedAt = -1;
-            free.OpenJob ??= () => _planner.Open(free.Planned!);
             Submit(WorkerJob.Prepare(Array.IndexOf(_slots, free), free.Feed.Generation, free.OpenJob), now);
             return true;
         }
@@ -798,7 +802,11 @@ public sealed class Coordinator : IDisposable
         }
 
         var (size, reason) = _planner.Capacity();
-        _planReason = reason;
+        if (reason != _planReason)
+        {
+            _planReason = reason;
+            changed = true;
+        }
         while (_plan.Count < size && now >= _nextSelectAt)
         {
             _before.Clear();
