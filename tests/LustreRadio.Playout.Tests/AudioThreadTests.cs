@@ -108,6 +108,11 @@ public sealed class AudioThreadTests(ITestOutputHelper output)
             const BindingFlags All = BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly;
             foreach (var method in type.GetMethods(All).Cast<MethodBase>().Concat(type.GetConstructors(All)))
             {
+                if (type == typeof(CrossfadeSequencer) && method.Name == "get_Events")
+                {
+                    continue; // spisak za testove i dijagnostiku: cita ga druga nit, audio-nit ga ne poziva
+                }
+
                 foreach (var called in CalledMethods(method))
                 {
                     if (called.DeclaringType?.FullName is { } owner && forbidden.Contains(owner))

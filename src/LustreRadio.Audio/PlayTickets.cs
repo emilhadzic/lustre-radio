@@ -148,8 +148,8 @@ public sealed class PlayTickets
     /// <summary>Nit za mesanje: pesma krenula. Kod pretapanja i <c>playback_id</c> i broj pesme A (D8-2).</summary>
     public void WriteStart(long handle, long frame, bool crossfade, Guid peerPlaybackId, long peerTrack)
     {
-        var t = Get(handle);
-        if (t is null || Volatile.Read(ref t.State) != Handed)
+        var t = Owned(handle);
+        if (t is null)
         {
             return;
         }
@@ -165,8 +165,8 @@ public sealed class PlayTickets
     /// <summary>Nit za mesanje: pretapanje pocelo, ova pesma je A (stigla do tacke prelaza).</summary>
     public void WriteTransition(long handle, long frame)
     {
-        var t = Get(handle);
-        if (t is null || Volatile.Read(ref t.State) != Handed)
+        var t = Owned(handle);
+        if (t is null)
         {
             return;
         }
@@ -179,8 +179,8 @@ public sealed class PlayTickets
     /// <summary>Nit za mesanje: ishod (poslednji upis u karticu), pa PREDATA -> ZAVRSENA (release). Posle ovoga je ne dira.</summary>
     public void WriteOutcome(long handle, long frame, StopReason reason, int positionMs)
     {
-        var t = Get(handle);
-        if (t is null || Volatile.Read(ref t.State) != Handed)
+        var t = Owned(handle);
+        if (t is null)
         {
             return;
         }
@@ -196,6 +196,21 @@ public sealed class PlayTickets
     public Guid PlaybackIdOf(long handle) => Get(handle)?.PlaybackId ?? Guid.Empty;
 
     public long TrackOf(long handle) => Get(handle)?.TrackNumber ?? 0;
+
+    /// <summary>
+    /// Nit za mesanje: kartica je njena (PREDATA, ista generacija). Generacija se proverava i posle stanja: kartica
+    /// koja je u medjuvremenu oslobodjena i ponovo predata ima vecu generaciju, pa se stara rucka odbacuje.
+    /// </summary>
+    private Ticket? Owned(long handle)
+    {
+        var t = Get(handle);
+        if (t is null || Volatile.Read(ref t.State) != Handed || Volatile.Read(ref t.Generation) != GenerationOf(handle))
+        {
+            return null;
+        }
+
+        return t;
+    }
 
     private Ticket? Get(long handle)
     {
