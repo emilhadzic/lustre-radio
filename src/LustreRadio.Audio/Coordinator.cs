@@ -1116,16 +1116,14 @@ public sealed class Coordinator : IDisposable
             }
             else
             {
-                // zaglavljena pesma se tek pripremala: odbacuje se i priprema se druga
-                if (slot.Item is { } item)
+                // zaglavljena pesma se tek pripremala: odbacuje se (i iz plana) i priprema se druga
+                if (slot.Item is { } item && slot.Ticket < 0)
                 {
                     _history?.Discarded(item.Track.PlaybackId, item.TrackNumber, StopReason.DecoderStall);
                 }
 
-                slot.Source = null;
-                slot.Item = null;
-                slot.Feed.Reset();
-                slot.State = State.Free;
+                slot.Source = null; // izvor zatvara napustena nit kad se odblokira
+                Discard(slot, StopReason.DecoderStall, releaseReservation: false);
             }
         }
 
