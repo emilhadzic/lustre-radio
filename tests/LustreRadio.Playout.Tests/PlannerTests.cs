@@ -316,7 +316,7 @@ public sealed class PlannerTests(ITestOutputHelper output) : IDisposable
 
         var started = session.Sequencer.Events.Take(100).Select(e => e.PlaybackId.ToString()).ToList();
         var rows = _env.Plays(session); // tek ovde radi pisar
-        var ids = rows.Select(r => r.PlaybackId).ToList();
+        var ids = rows.Select(r => r.PlaybackId ?? string.Empty).ToList();
         Assert.Equal(ids.Count, ids.Distinct().Count());
         Assert.All(started, id => Assert.Contains(id, ids));
         Assert.True(rows.Count >= 100);
