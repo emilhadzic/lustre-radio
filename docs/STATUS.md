@@ -502,3 +502,20 @@ Run 44050742102 (izmena posle `3d92962`): sva tri posla zelena; 720 prošlo, 0 p
 | G-sim, 4 scenarija | memorija na audio-niti 0 B, brava 0, prazan izlaz 0 – G-sim, nije test na hardveru |
 
 Izmene: događaji pesama u unapred napravljenom krugu od 64 mesta (ranije spisak koji je rastao 24/7 i bravu); provera rasporeda (zatvaranje u 23:30) premeštena sa audio-niti na koordinator; kartica sada proverava generaciju i posle stanja (B-218 je jednom pao zbog tog prozora; samo kod pristupa koji protokol ne dozvoljava). „Strog čuvar“ je ostvaren kroz testove B-01/B-02 (u radu i dalje samo broji, bez prekidača).
+
+**Odluke vlasnika 17.11.2026. 10:32:** B5 prihvaćen; B6 u skraćenom obimu od tri stavke (oporavak posle zaglavljenog dekodera, jedna duža G-sim simulacija, instalacioni paket i pregled). Odloženi testovi se ne vraćaju; pragovi se ne menjaju; posle B6 korišćenje, ne nove faze.
+
+## B6 – skraćeno (17.11.2026.)
+
+Run 44072649422 (izmena `b306cb6`): sva tri posla zelena; 720 prošlo, 0 palo, 4 preskočena (isti kao ranije).
+
+| Stavka | Gde | Rezultat |
+|---|---|---|
+| Oporavak posle zaglavljenog dekodera (B-196 skraćeno): objavljeni Watchdog + probni Engine; 4 zaglavljena otvaranja → kod 4 za 13,7 s → nadzor pokreće Engine → 4 pesme u karantinu (zapis u dnevniku), novi Engine priprema druge pesme (20,8 s od početka); `gasenje – zastoj dekodera` u dnevniku | G | PASS |
+| Duža simulacija `dugo-opterecen`: 1320 s, procena N4000 + opterećenje, pesme 20 s; 94 pretapanja, prazan izlaz 0, najduži korak 3,6 ms, zakasnelih prelaza 1 (prvi start), prazan deck ukupno 2,7 s, memorija Sim 39 MB | G-sim (nije test na hardveru) | PASS |
+| Instalacioni paket `LustreRadio-instalacija` (INSTALIRAJ/DEINSTALIRAJ, bez administratorskih prava): zadatak, nadzor, Engine i ekran rade; zatvoren ekran se vraća; uklanjanje ostavlja bazu; probni Engine i Sim nisu u paketu | G | PASS |
+| R, M | – | NOT TESTED / NOT TESTED – ACCEPTED RISK |
+
+Greške pronađene i ispravljene u B6: (1) reditelj je otvarao fajl pod svojom bravom, pa je zaglavljen fajl zamrzavao ceo Engine (nadzor ga je ubijao kao neodgovarajućeg, bez karantina); (2) zaglavljeno otvaranje fajla nije imalo putanju za probu diska, pa se čekalo zauvek; (3) zaglavljena pesma u pripremi ostajala je u planu i pokušavala se ponovo. Novo: nadzor pokreće i vraća ekran (spec. 2.1). Prva verzija duže simulacije (pesme 12 s) nije bila realna: kod pesama kraćih od dva pretapanja sledeća ne stigne da se pripremi; ponovljena sa pesmama od 20 s.
+
+Konačan pregled za vlasnika: Docs „LUSTRE RADIO – konačan pregled posle faze B“.
