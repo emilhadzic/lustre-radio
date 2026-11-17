@@ -542,3 +542,19 @@ Paket `LustreRadio-instalacija` iz pokretanja 44072649422 (izmena `b306cb6`).
 Izvor: izveštaj vlasnika („OK“ za svaku proveru); dnevnici i snimak Provere sistema nisu poslati. Mini PC (M): NOT TESTED – ACCEPTED RISK.
 
 Posle ove provere `faza-b` je spojena u `main` (fast-forward). Sledi LUSTRE RADIO FINAL, korak 1: Smart Crossfade.
+
+## FINAL, korak 1 – Smart Crossfade (grana `final-smart`, 17.11.2026.)
+
+Run 44094647238: sva tri posla zelena; 727 prošlo, 0 palo, 4 preskočena.
+
+Šta radi: pri skeniranju (isti prolaz kao merenje glasnoće) meri se tišina na početku i kraju pesme (prag −60 dBFS, rezerva 10 ms) i stišavanje na kraju. Tišina se ne pušta; pesma koja se sama stišava pretapa se tokom stišavanja (3–10 s); nagao kraj ili pesma bez analize: obično pretapanje 6 s. Postojeće pesme se analiziraju jednom, u pozadinskom skeniranju posle prve nadogradnje. Kolone u `tracks` se dodaju pri otvaranju baze (samo dodaju podatke; verzija šeme ostaje 2).
+
+| Provera | Gde | Rezultat |
+|---|---|---|
+| Analiza na veštačkim signalima: granice tišine ±20 ms, tih ali čujan zvuk (−50 dBFS) se ne seče, stišavanje 8 s prepoznato, kratak pad (1 s) nije stišavanje | G | PASS |
+| Pravi radio, pesme sa po 3 s tišine na krajevima: najduža tišina između pesama 0,000 s (kontrola bez Smart-a: 5,000 s) | G | PASS |
+| Duža simulacija (posle izmene) | G-sim | PASS (94 pretapanja, 0 praznih izlaza) |
+| Slušni test: 20 prelaza, ocena ≥ 4/5, nijedan odsečen čujan deo | R | NOT TESTED – čeka vlasnika |
+| Mini PC | M | NOT TESTED – ACCEPTED RISK |
+
+Nije urađeno (spec. 5.2 dozvoljava): usklađivanje energije (signal 3, standardna kriva) i procena vokala (signal 4, težina 0).
