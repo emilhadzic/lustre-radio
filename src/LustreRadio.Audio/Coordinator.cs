@@ -673,7 +673,8 @@ public sealed class Coordinator : IDisposable
                 _plan.Remove(planned); // jedna stavka; sledeca se bira posle
             }
 
-            var number = long.TryParse(track.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0;
+            var number = track.Id.StartsWith(PlannedItem.VoicePrefix, StringComparison.Ordinal) ? -1 // najava: ne ulazi u istoriju pesama
+                : long.TryParse(track.Id, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n) ? n : 0;
             if (track.Source.Format != _format)
             {
                 _log("Format izvora se razlikuje od formata engine-a: " + track.Id);

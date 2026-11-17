@@ -78,7 +78,7 @@ public sealed class RadioDirector : IPlanner
     private readonly Core.Voice.VoiceScheduler _voiceScheduler = new(new Random());
 
     /// <summary>Oznaka stavke plana koja je najava, ne pesma (ne ulazi u istoriju pesama ni u rotaciju).</summary>
-    public const string VoicePrefix = "voice:";
+    public const string VoicePrefix = PlannedItem.VoicePrefix;
 
     /// <summary>Biblioteka najava (spec. 15); null = bez najava.</summary>
     public VoiceLibrary? Voice { get; set; }

@@ -116,6 +116,11 @@ public sealed class LustreDatabase : IDisposable
             using var destination = new SqliteConnection(new SqliteConnectionStringBuilder { DataSource = destinationPath, Pooling = false }.ToString());
             destination.Open();
             _connection.BackupDatabase(destination);
+
+            // kopija mora biti jedan samostalan fajl (bez -wal), da bi se mogla premestiti i vratiti kao jedan fajl
+            using var command = destination.CreateCommand();
+            command.CommandText = "PRAGMA journal_mode=DELETE;";
+            command.ExecuteNonQuery();
         }
     }
 

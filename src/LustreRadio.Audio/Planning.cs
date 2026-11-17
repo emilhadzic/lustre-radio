@@ -25,7 +25,12 @@ public sealed class PlannedItem
     /// <summary>Podaci planera (rezervacija u rotaciji, zapis iz baze).</summary>
     public object? Tag { get; init; }
 
-    public long TrackNumber => long.TryParse(TrackId, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
+    /// <summary>Oznaka stavke koja je najava, ne pesma.</summary>
+    public const string VoicePrefix = "voice:";
+
+    /// <summary>Broj pesme za istoriju; najava dobija -1 (ne ulazi u istoriju pesama ni u rotaciju).</summary>
+    public long TrackNumber => TrackId.StartsWith(VoicePrefix, StringComparison.Ordinal) ? -1
+        : long.TryParse(TrackId, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var n) ? n : 0;
 }
 
 /// <summary>Sta je u planu (za ekran "Sledeca" i "Proveru sistema"): stvarni broj stavki i razlog kad ih je manje od tri.</summary>

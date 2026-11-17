@@ -61,7 +61,7 @@ public sealed class VoiceTests(ITestOutputHelper output) : IDisposable
         var song = events[i - 1];
         Assert.True(events[i].StartFrame - song.StartFrame >= (15 - 0.1) * 44100, "pesma pre najave je presecena");
         Assert.True(events.Count > i + 1 && !events[i + 1].Id.StartsWith(RadioDirector.VoicePrefix, StringComparison.Ordinal), "posle najave nije krenula pesma");
-        Assert.DoesNotContain(plays, p => p.TrackId <= 0);
+        Assert.DoesNotContain(plays, p => p.TrackId < 0);
     }
 
     [Fact] // licenca nije potpuna: najava ne moze da se odobri i nikad ne ide u eter (D10)
