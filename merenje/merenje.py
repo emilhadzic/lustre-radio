@@ -203,15 +203,26 @@ CC_TAGS = ["chill", "chillout", "downtempo", "lounge", "jazz", "nu_jazz", "house
            "ambient", "instrumental", "trip_hop", "electronic", "electronica", "piano", "bossa_nova"]
 
 
+CC_BAD_PAGES = []
+
+
 def cc_search():
     seen, raw = set(), []
     sample_dumped = False
     for tag in CC_TAGS:
-        offset = 0
+        offset, fails = 0, 0
         while True:
             url = ("https://ccmixter.org/api/query?" + urllib.parse.urlencode(
                 {"f": "json", "tags": tag, "limit": 100, "offset": offset, "type": "any"}))
             d = http_json(url)
+            if d is None:  # neispravan odgovor: preskoci tu stranu, ne ceo zanr
+                fails += 1
+                CC_BAD_PAGES.append(url)
+                if fails >= 3:
+                    break
+                offset += 100
+                continue
+            fails = 0
             if not d:
                 break
             if not sample_dumped:
@@ -352,21 +363,30 @@ def main():
         ts = [t for t in pool if g in t["zanrovi"]]
         return len(ts), len({t["izdanje_id"] for t in ts}), len({norm(t["izvodjac"]) for t in ts})
 
-    # --- uzorak: glavni zanrovi, najvise 1 pesma po izvodjacu i po izdanju
+    # --- uzorak: glavni zanrovi; 4 iz Internet Archive + 2 iz ccMixter po zanru;
+    # bez velikih zbirnih izdanja (vise od 40 pesama), 1 pesma po izvodjacu i izdanju
+    big = {r for r, n in rel_count.items() if n > 40}
     sample, used_art, used_rel = [], set(), set()
     for g in CORE:
-        cand = sorted([t for t in core if g in t["zanrovi"]], key=lambda t: -t["popularnost"])
-        k = 0
-        for t in cand:
-            a = norm(t["izvodjac"])
-            if a in used_art or t["izdanje_id"] in used_rel:
-                continue
-            sample.append((g, t))
-            used_art.add(a)
-            used_rel.add(t["izdanje_id"])
-            k += 1
-            if k >= 6:
-                break
+        for src, want in (("Internet Archive", 4), ("ccMixter", 2)):
+            cand = sorted([t for t in core if g in t["zanrovi"] and t["izvor"] == src
+                           and t["izdanje_id"] not in big and norm(t["izvodjac"])],
+                          key=lambda t: -t["popularnost"])
+            k = 0
+            for t in cand:
+                a = norm(t["izvodjac"])
+                if a in used_art or t["izdanje_id"] in used_rel:
+                    continue
+                sample.append((g, t))
+                used_art.add(a)
+                used_rel.add(t["izdanje_id"])
+                k += 1
+                if k >= want:
+                    break
+    no_big = sum(min(n, 5) for r, n in rel_count.items() if r not in big)
+    rel_info = {}
+    for t in core:
+        rel_info.setdefault(t["izdanje_id"], (t["izdanje"], t["izvodjac"], t["licenca"]))
 
     cols = ["izvor", "izvodjac", "naslov", "izdanje", "zanrovi", "licenca", "trajanje", "formati", "kbps",
             "popularnost", "slusaj", "fajl", "licenca_url"]
@@ -393,12 +413,14 @@ def main():
          f"- audio snimaka u tim izdanjima: {stats['ia_audio_snimaka_u_tim_izdanjima']}",
          f"- {stats.get('ia_napomena', 'pregledana sva takva izdanja')}",
          f"- ccMixter jedinstvenih unosa za oznake ({', '.join(CC_TAGS)}): {stats['cc_rezultati_pretrage']}",
-         f"- ccMixter po licenci: {stats['cc_po_licenci']}", "",
+         f"- ccMixter po licenci: {stats['cc_po_licenci']}",
+         f"- ccMixter strana sa neispravnim odgovorom (preskocene, po 100 unosa): {len(CC_BAD_PAGES)}", "",
          "## Prosli osnovne filtere (licenca, trajanje 2:30-10:00, kvalitet), bez duplikata", "",
          f"- odbijeno: {stats['odbijeno_po_razlogu']}",
          f"- duplikata uklonjeno: {stats['duplikata_uklonjeno']}",
          f"- GLAVNI ZANROVI KONCEPTA: **{len(core)}** pesama, {len(rel_count)} izdanja, {artists} izvodjaca",
          f"- isto, ali najvise 5 pesama po izdanju (bez naduvavanja kompilacijama): **{capped}**",
+         f"- isto, bez zbirnih izdanja sa vise od 40 pesama ({len(big)} izdanja): **{no_big}**",
          f"- samo sire grupe (soft electronic / instrumental / house), van glavnog zbira: {len(wide)}",
          f"- po izvoru (glavni): {dict(by_src)}",
          f"- po licenci (glavni): {dict(lic)}", "",
@@ -407,8 +429,8 @@ def main():
         n, r, ar = gstat(g, uniq)
         L.append(f"- {g}: {n} / {r} / {ar}")
     L += ["", "## Izdanja sa najvise pesama (glavni zanrovi)", ""]
-    for rid, n in rel_count.most_common(10):
-        L.append(f"- {rid}: {n}")
+    for rid, n in rel_count.most_common(15):
+        L.append(f"- {rid}: {n} pesama | {rel_info[rid][0][:60]} | {rel_info[rid][1][:40]} | {rel_info[rid][2]}")
     if durs:
         durs.sort()
         L += ["", "## Trajanje i formati (glavni)", "",
