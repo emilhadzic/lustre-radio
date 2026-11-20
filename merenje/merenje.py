@@ -24,7 +24,12 @@ UA = "LustreRadio-Faza1-merenje/1.0 (katalog; github.com/emilhadzic/lustre-radio
 OUT = os.environ.get("OUT", "izlaz")
 MAX_IA_ITEMS = int(os.environ.get("MAX_IA_ITEMS", "6000"))
 MIN_SEC, MAX_SEC = 150, 600          # osnovni filter: 2:30 - 10:00
-MIN_KBPS = 192                       # osnovni filter za MP3; lossless uvek prolazi
+MIN_KBPS = 192                       # samo za kompresovane formate (MP3, OGG); lossless (FLAC/WAV/AIFF) nema ovo pravilo
+LOSSLESS = ("FLAC", "WAV", "AIFF")
+# delovi pesama, a ne kompletne kompozicije
+PARTIAL = ["acapella", "a cappella", "acappella", "a capella", "pells", "stem", "stems", "sample", "samples",
+           "sample pack", "loop", "loops", "intro", "outro", "interlude", "skit", "jingle", "snippet", "preview",
+           "sketch", "rough", "demo", "drum track", "vocals only", "vocal only", "beat only"]
 
 # Zanrovi koncepta -> kljucne reci (male slova, trazi se u oznakama/nazivu)
 GENRES = {
@@ -55,6 +60,11 @@ def http_json(url, tries=4):
                 print(f"GRESKA {url[:120]}: {e}", file=sys.stderr)
                 return None
             time.sleep(2 * (i + 1))
+
+
+def is_partial(text):
+    t = " " + re.sub(r"[_/,;|()\[\]\-]+", " ", str(text).lower()) + " "
+    return any(re.search(r"(?<![a-z])" + re.escape(k) + r"(?![a-z])", t) for k in PARTIAL)
 
 
 def license_class(url):
@@ -178,7 +188,8 @@ def ia_tracks(item):
         fmt, f = best
         length = parse_len(f.get("length") or next((parse_len(x[1].get("length")) for x in files if x[1].get("length")), None))
         size = float(f.get("size") or 0)
-        kbps = round(size * 8 / length / 1000) if length and size and fmt == "MP3" else None
+        kbps = round(size * 8 / length / 1000) if length and size and fmt in ("MP3", "OGG") else None
+        lossless_f = next((x[1] for x in files if x[0] in LOSSLESS), None)
         mp3 = next((x[1] for x in files if x[0] == "MP3"), None)
         tracks.append({
             "izvor": "Internet Archive",
@@ -194,6 +205,7 @@ def ia_tracks(item):
             "popularnost": float(item.get("downloads") or 0),
             "slusaj": f"https://archive.org/details/{ident}",
             "fajl": "https://archive.org/download/" + urllib.parse.quote(f"{ident}/{(mp3 or f)['name']}"),
+            "fajl_lossless": ("https://archive.org/download/" + urllib.parse.quote(f"{ident}/{lossless_f['name']}")) if lossless_f else "",
         })
     return tracks
 
@@ -270,6 +282,7 @@ def cc_track(r):
         "popularnost": float(r.get("upload_num_scores") or 0),
         "slusaj": r.get("file_page_url") or f"https://ccmixter.org/files/{r.get('user_name')}/{r.get('upload_id')}",
         "fajl": f.get("download_url") or "",
+        "fajl_lossless": next((x.get("download_url") for x in audio if str((x.get("file_format_info") or {}).get("default-ext", "")).upper() in LOSSLESS), "") or "",
     }
 
 
@@ -328,9 +341,13 @@ def main():
         if not (MIN_SEC <= t["trajanje"] <= MAX_SEC):
             rejected["trajanje van 2:30-10:00"] += 1
             continue
-        lossless = any(x in t["formati"] for x in ("FLAC", "WAV", "AIFF"))
-        if not lossless and t["kbps"] and t["kbps"] < MIN_KBPS - 8:
-            rejected[f"kvalitet ispod {MIN_KBPS} kbps"] += 1
+        if is_partial(t["naslov"] + " " + t["oznake"]):
+            rejected["deo pesme (vokal, semplovi, loop, intro...)"] += 1
+            continue
+        t["lossless"] = any(x in t["formati"] for x in LOSSLESS)
+        # lossless se ne meri po kbps; kompresovani (MP3, OGG) moraju imati najmanje 192 kbps (VBR tolerancija 8)
+        if not t["lossless"] and t["kbps"] and t["kbps"] < MIN_KBPS - 8:
+            rejected[f"kompresovano ispod {MIN_KBPS} kbps"] += 1
             continue
         passed.append(t)
 
@@ -423,7 +440,8 @@ def main():
          f"- isto, bez zbirnih izdanja sa vise od 40 pesama ({len(big)} izdanja): **{no_big}**",
          f"- samo sire grupe (soft electronic / instrumental / house), van glavnog zbira: {len(wide)}",
          f"- po izvoru (glavni): {dict(by_src)}",
-         f"- po licenci (glavni): {dict(lic)}", "",
+         f"- po licenci (glavni): {dict(lic)}",
+         f"- lossless dostupan (FLAC/WAV/AIFF): {sum(1 for t in core if t['lossless'])}; samo kompresovano: {sum(1 for t in core if not t['lossless'])}", "",
          "## Po zanru: pesme / izdanja / izvodjaci (pesma moze imati vise zanrova)", ""]
     for g in CONCEPT:
         n, r, ar = gstat(g, uniq)
@@ -439,6 +457,8 @@ def main():
     L += ["", "## Uzorak za preslusavanje (1 pesma po izvodjacu i izdanju)", ""]
     for g, t in sample:
         L.append(f"- [{g}] {t['izvodjac']} - {t['naslov']} ({mmss(t['trajanje'])}, {t['licenca']}, {t['izvor']}) {t['slusaj']} | {t['fajl']}")
+    with open(os.path.join(OUT, "kandidati.json"), "w") as fh:
+        json.dump([{k: v for k, v in t.items()} for t in core if t["izdanje_id"] not in big], fh)
     rep = "\n".join(L) + "\n"
     with open(os.path.join(OUT, "izvestaj.md"), "w") as fh:
         fh.write(rep)
