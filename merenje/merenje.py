@@ -271,8 +271,8 @@ def cc_track(r):
     return {
         "izvor": "ccMixter",
         "id": str(r.get("upload_id")),
-        "izvodjac": r.get("user_real_name") or r.get("user_name") or "",
-        "naslov": r.get("upload_name") or "",
+        "izvodjac": str(r.get("user_real_name") or r.get("user_name") or ""),
+        "naslov": str(r.get("upload_name") or ""),
         "izdanje": "",
         "oznake": str(r.get("upload_tags") or "") + " " + str(r.get("upload_extra", {}).get("usertags", "") if isinstance(r.get("upload_extra"), dict) else ""),
         "licenca_url": r.get("license_url") or "",
@@ -341,6 +341,7 @@ def main():
         if not (MIN_SEC <= t["trajanje"] <= MAX_SEC):
             rejected["trajanje van 2:30-10:00"] += 1
             continue
+        t["naslov"], t["izvodjac"], t["oznake"] = str(t["naslov"]), str(t["izvodjac"]), str(t["oznake"])
         if is_partial(t["naslov"] + " " + t["oznake"]):
             rejected["deo pesme (vokal, semplovi, loop, intro...)"] += 1
             continue
