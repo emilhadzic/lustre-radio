@@ -25,7 +25,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 from merenje import UA, norm  # noqa: E402
 
 OUT = os.environ.get("OUT", "izlaz")
-POOL_PER_GENRE = int(os.environ.get("POOL_PER_GENRE", "50"))
+POOL_PER_GENRE = int(os.environ.get("POOL_PER_GENRE", "60"))
 random.seed(20261120)
 
 # Profili zvuka po zanru: opseg tempa (BPM), najveca dozvoljena ostrina (spektralni centroid, Hz)
@@ -37,7 +37,8 @@ PROFILE = {
     "downtempo":      {"bpm": (70, 112), "centroid": 2800, "kvota": 9},
     "jazz / nu jazz": {"bpm": (60, 130), "centroid": 3000, "kvota": 10},
 }
-EXPERIMENTAL = ["noise", "harsh", "drone", "glitch", "industrial", "dark ambient", "experimental", "metal",
+DJMIX = ["mix0", "medley", "dj mix", "discomixer", "continuous mix", "ssrdj", "megamix", "mixtape"]
+EXPERIMENTAL = ["improv", "avant", "free jazz", "spoken word", "poetry", "poem", "noise", "harsh", "drone", "glitch", "industrial", "dark ambient", "experimental", "metal",
                 "punk", "breakcore", "gabber", "hardcore", "psytrance", "dubstep", "speedcore", "field recording"]
 
 
@@ -47,6 +48,20 @@ def mojibake(s):
         return True
     bad = sum(1 for c in letters if "\u00c0" <= c <= "\u00ff")
     return bad / len(letters) > 0.3
+
+
+def artist_tokens(name):
+    parts = re.split(r"\s*(?:&|,|\+| aka | a\.k\.a\.? | feat\.? | ft\.? | vs\.? | and | x | with )\s*", " " + str(name).lower() + " ")
+    stop = {"music", "band", "project", "trio", "quartet", "quintet", "orchestra", "the", "and", "aka", "feat",
+            "sound", "sounds", "collective", "ensemble", "records", "various", "artists"}
+    toks = set()
+    for p in parts:
+        n = re.sub(r"^(aka|a k a) ", "", norm(p))
+        if n:
+            toks.add(n)
+            toks.add(n.replace(" ", ""))
+            toks |= {w for w in n.split() if len(w) >= 4 and w not in stop}
+    return toks
 
 
 def download(url, path):
@@ -117,9 +132,9 @@ def fit(genre, a):
         score -= min(30, (a["centroid"] - prof["centroid"]) / 40)
         why.append("ostriji zvuk")
     if a["lufs"] is not None:
-        if a["lufs"] < -22:
-            score -= 15
-            why.append("vrlo tih snimak")
+        if a["lufs"] < -19:
+            score -= 25
+            why.append("tih snimak (amaterski/uzivo nivo)")
         if a["lufs"] > -6:
             score -= 15
             why.append("preglasno/zgusnuto")
@@ -153,6 +168,9 @@ def main():
             excluded["izvodjac bez imena/pokvareno ime"] += 1
             continue
         tags = (t["oznake"] + " " + t["naslov"]).lower()
+        if any(k in tags for k in DJMIX):
+            excluded["DJ miks / medley"] = excluded.get("DJ miks / medley", 0) + 1
+            continue
         if any(k in tags for k in EXPERIMENTAL):
             excluded["eksperimentalne oznake"] += 1
             continue
@@ -160,19 +178,19 @@ def main():
     print(f"posle ciscenja: {len(clean)} {excluded}", flush=True)
 
     # raznovrstan skup: po zanru, najvise 1 po izdanju i izvodjacu, nasumicno (ne samo popularno)
-    pool, used_rel, used_art = [], set(), set()
+    pool, used_rel, used_art = [], {}, set()
     for g in PROFILE:
-        cg = [t for t in clean if g in t["zanrovi"]]
+        cg = [t for t in clean if g in t["zanrovi"] and t["izvor"] == "Internet Archive"]
         random.shuffle(cg)
-        # pola iz popularnijih, pola nasumicno
         top = sorted(cg, key=lambda t: -t["popularnost"])[: POOL_PER_GENRE]
         mix = top[: POOL_PER_GENRE // 2] + cg
         k = 0
         for t in mix:
-            if t["izdanje_id"] in used_rel or norm(t["izvodjac"]) in used_art:
+            toks = artist_tokens(t["izvodjac"])
+            if used_rel.get(t["izdanje_id"], 0) >= 2 or toks & used_art:
                 continue
-            used_rel.add(t["izdanje_id"])
-            used_art.add(norm(t["izvodjac"]))
+            used_rel[t["izdanje_id"]] = used_rel.get(t["izdanje_id"], 0) + 1
+            used_art |= toks
             pool.append((g, t))
             k += 1
             if k >= POOL_PER_GENRE:
@@ -201,13 +219,23 @@ def main():
         time.sleep(0.5)
 
     # izbor 50: po kvoti zanra, najbolja ocena, najvise 1 po izvodjacu; ocena najmanje 60
-    pick = []
+    pick, picked_rel = [], set()
     for g, prof in PROFILE.items():
         rg = sorted([r for r in rows if r["zanr"] == g and r["ocena"] >= 60], key=lambda r: -r["ocena"])
-        pick += rg[: prof["kvota"]]
+        n = 0
+        for r in rg:
+            if n >= prof["kvota"] or r["izdanje_id"] in picked_rel:
+                continue
+            picked_rel.add(r["izdanje_id"])
+            pick.append(r)
+            n += 1
     if len(pick) < 50:  # dopuni najboljima iz ostalih zanrova
-        rest = sorted([r for r in rows if r not in pick and r["ocena"] >= 60], key=lambda r: -r["ocena"])
-        pick += rest[: 50 - len(pick)]
+        rest = sorted([r for r in rows if r not in pick and r["ocena"] >= 60 and r["izdanje_id"] not in picked_rel], key=lambda r: -r["ocena"])
+        for r in rest:
+            if len(pick) >= 50 or r["izdanje_id"] in picked_rel:
+                continue
+            picked_rel.add(r["izdanje_id"])
+            pick.append(r)
 
     cols = ["zanr", "ocena", "razlozi", "izvodjac", "naslov", "trajanje", "bpm_ocena", "lufs", "centroid",
             "granica_hz", "licenca", "izvor", "slusaj", "fajl", "fajl_lossless", "lossless"]

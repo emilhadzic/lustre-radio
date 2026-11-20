@@ -1,24 +1,30 @@
 name: kolektor-merenje
 
 on:
+  workflow_dispatch:
   push:
     branches: [kolektor-merenje]
-  workflow_dispatch:
 
 jobs:
-  merenje:
+  uzorak:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 150
+    permissions:
+      actions: read
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: Alati za analizu zvuka (samo na GitHub-u)
         run: |
           which ffmpeg || (sudo apt-get update -q && sudo apt-get install -y -q ffmpeg)
           pip install -q librosa==0.10.2.post1 soundfile
-      - name: Merenje kataloga (bez preuzimanja muzike)
-        run: python3 merenje/merenje.py
-        env:
-          OUT: izlaz
+      - name: Izmereni katalog iz prethodnog merenja (run 44746551169)
+        uses: actions/download-artifact@v4
+        with:
+          name: merenje-izlaz
+          path: izlaz
+          run-id: 44746551169
+          github-token: ${{ github.token }}
       - name: Uzorak 50 po zvuku (privremeno preuzimanje samo za analizu, fajlovi se brisu)
         run: python3 merenje/uzorak.py
         env:
@@ -26,5 +32,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: merenje-izlaz
+          name: uzorak-izlaz
           path: izlaz/
